@@ -35,9 +35,14 @@ re-matched. When an album has a stored `spotify_album_id` or stored
 `spotify_track_id`s but is missing the matching artist IDs, the plugin looks up the
 stored album and its track list and writes the artist IDs from them, then logs one line
 such as `Backfilled artist IDs: album=yes, tracks=12`. A track that is not on the stored
-album (a bonus track matched from a related release, say) is looked up individually. No
-search is performed, nothing is re-matched, and an album that already has all of its
-artist IDs costs zero API calls. Under `--dry-run` nothing is written.
+album (a bonus track matched from a related release, say) is resolved in a single bulk
+request. No search is performed, nothing is re-matched, and an album that already has all
+of its artist IDs costs zero API calls. Under `--dry-run` nothing is written.
+
+Backfilling only avoids a fresh search for the IDs that are already stored; it is not a
+substitute for a run. Once it is done the normal match path continues as usual, so an
+album that is not yet fully matched is still searched, matched and repaired in the same
+run.
 
 IDs are validated before they are used or stored. Anything that is not exactly
 22 base62 characters is treated as absent: it is never sent to the Spotify API,

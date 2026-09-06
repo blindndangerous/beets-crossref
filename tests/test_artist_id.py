@@ -1,4 +1,5 @@
 """Tests for spotify_artist_id: writes at every match site, clearing, and backfill."""
+import contextlib
 import pathlib
 import sys
 import unittest
@@ -276,6 +277,39 @@ class StaleArtistIdTests(unittest.TestCase):
         self.assertNotIn("spotify_artist_id", item)
 
 
+    def test_dry_run_keeps_stale_artist_ids_and_stores_nothing(self):
+        item = FakeItem("Track 1", artist="Artist", albumartist="Artist",
+                        track=1, disc=1, length=180.0)
+        item["spotify_track_id"] = OUTSIDE_TRACK_ID
+        item["spotify_artist_id"] = ARTIST_TRACK_2
+        album = FakeAlbum("Album", "Artist", items=[item])
+        album["spotify_album_id"] = RELATED_ALBUM_ID
+        album["spotify_artist_id"] = ARTIST_RELATED
+        # Neither the new album nor the new track exposes a usable artist ID.
+        spotify_album = {"id": ALBUM_ID, "name": "Album"}
+        tracks = [{
+            "id": TRACK_ID_1, "name": "Track 1",
+            "artists": [{"name": "Artist"}],
+            "disc_number": 1, "track_number": 1, "duration_ms": 180000,
+        }]
+
+        with mock.patch.object(self.plugin.matcher, "find_best_album_match",
+                               return_value=(spotify_album, [])):
+            with mock.patch.object(self.plugin.client, "get_album_tracks",
+                                   return_value=tracks):
+                # force=True so the run reaches the match path instead of the
+                # "all tracks matched" early return.
+                self.plugin._process_single_album(
+                    album, dry_run=True, interactive=False, force=True,
+                    provided_album_id=None,
+                )
+
+        self.assertEqual(album.get("spotify_artist_id"), ARTIST_RELATED)
+        self.assertEqual(item.get("spotify_artist_id"), ARTIST_TRACK_2)
+        self.assertEqual(album.store_calls, 0)
+        self.assertEqual(item.store_calls, 0)
+
+
 class PrimaryArtistIdTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -391,8 +425,9 @@ class BackfillArtistIdTests(unittest.TestCase):
                           track_number=2, duration_ms=190000),
         ]
 
+    @contextlib.contextmanager
     def _patched_client(self):
-        """Return (context managers, call log) for the three client lookups."""
+        """Patch every client lookup the backfill can reach; yield the call log."""
         calls = []
 
         def get_album(album_id):
@@ -404,16 +439,22 @@ class BackfillArtistIdTests(unittest.TestCase):
             return self.album_tracks
 
         def get_track(track_id):
+            # Patched only so a per-track lookup would show up in the call log.
             calls.append(("get_track", track_id))
             return spotify_track(track_id, "Outside Track", ARTIST_TRACK_2)
 
-        patches = [
-            mock.patch.object(self.plugin.client, "get_album", side_effect=get_album),
-            mock.patch.object(self.plugin.client, "get_album_tracks",
-                              side_effect=get_album_tracks),
-            mock.patch.object(self.plugin.client, "get_track", side_effect=get_track),
-        ]
-        return patches, calls
+        def get_tracks_bulk(track_ids):
+            ids = list(track_ids)
+            calls.append(("get_tracks_bulk", tuple(ids)))
+            return {
+                track_id: spotify_track(track_id, "Outside Track", ARTIST_TRACK_2)
+                for track_id in ids
+            }
+
+        with mock.patch.object(self.plugin.client, "get_album", side_effect=get_album),                 mock.patch.object(self.plugin.client, "get_album_tracks",
+                                  side_effect=get_album_tracks),                 mock.patch.object(self.plugin.client, "get_track", side_effect=get_track),                 mock.patch.object(self.plugin.client, "get_tracks_bulk",
+                                  side_effect=get_tracks_bulk):
+            yield calls
 
     def _album_with_ids(self, *, artist_ids=False):
         item1 = FakeItem("Track 1", artist="Artist", albumartist="Artist",
@@ -432,9 +473,8 @@ class BackfillArtistIdTests(unittest.TestCase):
 
     def test_backfill_fills_artist_ids_without_rematching(self):
         album, item1, item2 = self._album_with_ids()
-        patches, calls = self._patched_client()
 
-        with patches[0], patches[1], patches[2]:
+        with self._patched_client() as calls:
             with mock.patch.object(self.plugin.client, "search") as search_mock:
                 with mock.patch.object(self.plugin.matcher,
                                        "find_best_album_match") as find_mock:
@@ -456,9 +496,8 @@ class BackfillArtistIdTests(unittest.TestCase):
 
     def test_backfill_is_a_no_op_with_zero_api_calls_when_fully_populated(self):
         album, _item1, _item2 = self._album_with_ids(artist_ids=True)
-        patches, calls = self._patched_client()
 
-        with patches[0], patches[1], patches[2]:
+        with self._patched_client() as calls:
             with mock.patch.object(self.plugin.client, "search") as search_mock:
                 with mock.patch.object(self.plugin.matcher,
                                        "find_best_album_match") as find_mock:
@@ -473,9 +512,8 @@ class BackfillArtistIdTests(unittest.TestCase):
 
     def test_backfill_dry_run_stores_nothing(self):
         album, item1, item2 = self._album_with_ids()
-        patches, _calls = self._patched_client()
 
-        with patches[0], patches[1], patches[2]:
+        with self._patched_client():
             with mock.patch.object(self.plugin.matcher, "find_best_album_match"):
                 self.plugin._process_single_album(
                     album, dry_run=True, interactive=False, force=False,
@@ -489,13 +527,12 @@ class BackfillArtistIdTests(unittest.TestCase):
         self.assertEqual(item1.store_calls, 0)
         self.assertEqual(item2.store_calls, 0)
 
-    def test_backfill_falls_back_to_get_track_for_track_outside_the_album(self):
+    def test_backfill_resolves_tracks_outside_the_album_in_one_bulk_call(self):
         album, item1, item2 = self._album_with_ids()
         # item2 was matched from a related release, so it is not on this album.
         item2["spotify_track_id"] = OUTSIDE_TRACK_ID
-        patches, calls = self._patched_client()
 
-        with patches[0], patches[1], patches[2]:
+        with self._patched_client() as calls:
             with mock.patch.object(self.plugin.matcher, "find_best_album_match"):
                 self.plugin._process_single_album(
                     album, dry_run=False, interactive=False, force=False,
@@ -504,8 +541,47 @@ class BackfillArtistIdTests(unittest.TestCase):
 
         self.assertEqual(item1.get("spotify_artist_id"), ARTIST_TRACK_1)
         self.assertEqual(item2.get("spotify_artist_id"), ARTIST_TRACK_2)
-        self.assertIn(("get_track", OUTSIDE_TRACK_ID), calls)
-        self.assertEqual(len([c for c in calls if c[0] == "get_track"]), 1)
+        # Exactly one bulk request for the one track that was not on the album,
+        # and never a per-track lookup.
+        self.assertEqual(calls, [
+            ("get_album", ALBUM_ID),
+            ("get_album_tracks", ALBUM_ID),
+            ("get_tracks_bulk", (OUTSIDE_TRACK_ID,)),
+        ])
+        self.assertEqual([c for c in calls if c[0] == "get_track"], [])
+
+    def test_backfill_without_album_id_uses_one_bulk_call_for_all_tracks(self):
+        # No stored album ID at all (e.g. cleared as malformed, or track IDs
+        # written by the fallback search without an album consensus).
+        items = []
+        for index, track_id in enumerate(
+            (TRACK_ID_1, TRACK_ID_2, OUTSIDE_TRACK_ID), start=1,
+        ):
+            item = FakeItem(f"Track {index}", artist="Artist", albumartist="Artist",
+                            track=index, disc=1, length=180.0)
+            item["spotify_track_id"] = track_id
+            items.append(item)
+        album = FakeAlbum("Album", "Artist", items=items)
+
+        with self._patched_client() as calls:
+            with mock.patch.object(self.plugin.client, "search") as search_mock:
+                with mock.patch.object(self.plugin.matcher,
+                                       "find_best_album_match") as find_mock:
+                    self.plugin._process_single_album(
+                        album, dry_run=False, interactive=False, force=False,
+                        provided_album_id=None,
+                    )
+
+        for item in items:
+            self.assertEqual(item.get("spotify_artist_id"), ARTIST_TRACK_2)
+        # One bulk request covering all three tracks; no album lookups, no
+        # per-track lookups, no search.
+        self.assertEqual(calls, [
+            ("get_tracks_bulk", (TRACK_ID_1, TRACK_ID_2, OUTSIDE_TRACK_ID)),
+        ])
+        self.assertEqual([c for c in calls if c[0] == "get_track"], [])
+        search_mock.assert_not_called()
+        find_mock.assert_not_called()
 
 
 class ArtistIdFieldRegistrationTests(unittest.TestCase):

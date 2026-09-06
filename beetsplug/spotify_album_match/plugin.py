@@ -379,11 +379,20 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
                     track_id = track.get('id')
                     if track_id:
                         album_track_map[track_id] = track
+            # Tracks matched from a related release are not on this album; resolve
+            # them in one bulk request rather than one lookup per track.
+            missing_ids = [
+                track_id for track_id in (
+                    clean_spotify_id(item.get('spotify_track_id')) for item in pending_items
+                )
+                if track_id not in album_track_map
+            ]
+            if missing_ids:
+                album_track_map.update(self.client.get_tracks_bulk(missing_ids))
+
             for item in pending_items:
                 track_id = clean_spotify_id(item.get('spotify_track_id'))
-                # Tracks matched from a related release are not on this album.
-                spotify_track = album_track_map.get(track_id) or self.client.get_track(track_id)
-                artist_id = primary_artist_id(spotify_track)
+                artist_id = primary_artist_id(album_track_map.get(track_id))
                 if not artist_id:
                     log.debug(f"No usable primary Spotify artist ID for '{item.title}'.")
                     continue

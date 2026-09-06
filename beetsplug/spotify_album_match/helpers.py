@@ -1,6 +1,8 @@
-"""Pure functions for fuzzy matching, normalization, and Spotify query building.
+"""Beets-free helpers: fuzzy matching, normalization, Spotify query building.
 
-Importable without any beets/spotipy dependencies.
+Importable without any beets/spotipy dependencies. Most of these are pure
+functions; `set_artist_id` and `discard_artist_id` are the exceptions, mutating
+the album/item they are handed and logging as they go.
 """
 import logging
 import re

@@ -201,7 +201,7 @@ class ProcessSingleAlbumTests(unittest.TestCase):
         album["spotify_album_id"] = "basealbum0000000000000"
 
         with mock.patch.object(self.plugin.client, "get_album", return_value=None), \
-                mock.patch.object(self.plugin.client, "get_track", return_value=None):
+                mock.patch.object(self.plugin.client, "get_tracks_bulk", return_value={}):
             with mock.patch.object(self.plugin.client, "get_album_tracks", return_value=[{"id": "t"}]):
                 with mock.patch.object(
                     self.plugin.repairer, "evaluate_existing_track_ids",
@@ -374,7 +374,7 @@ class WrongStoredIdTests(unittest.TestCase):
 
         with mock.patch.object(self.plugin.client, "get_album", return_value=wrong_spotify_album), \
                 mock.patch.object(self.plugin.client, "get_album_tracks", return_value=[]), \
-                mock.patch.object(self.plugin.client, "get_track", return_value=None):
+                mock.patch.object(self.plugin.client, "get_tracks_bulk", return_value={}):
             with mock.patch.object(self.plugin, "clear_all_ids", side_effect=fake_clear_all) as clear_mock:
                 with mock.patch.object(
                     self.plugin.matcher, "find_best_album_match", return_value=(None, []),

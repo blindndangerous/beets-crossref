@@ -79,7 +79,8 @@ Package modules:
 - `matching.py` — `AlbumMatcher`: search, candidate building/selection, track matching
 - `repair.py` — `AlbumRepairer`: verify existing IDs, repair strategies, fallback
 - `client.py` — `SpotifyClient`: caching, rate-limiting, retries
-- `helpers.py` — pure functions: fuzzy scoring, query building, `clean_spotify_id`
+- `helpers.py` — beets-free helpers (importable without beets): fuzzy scoring, query
+  building, `clean_spotify_id`, and the artist-ID field writers
 
 Test files:
 
