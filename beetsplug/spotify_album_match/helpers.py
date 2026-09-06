@@ -84,10 +84,25 @@ def primary_artist_id(spotify_obj):
     return clean_spotify_id(first_artist.get('id'))
 
 
+def own_artist_id(obj):
+    """Artist ID stored on this object itself (beets Items fall back to their album)."""
+    values_flex = getattr(obj, '_values_flex', None)
+    if values_flex is not None:
+        return values_flex.get('spotify_artist_id')
+    return obj.get('spotify_artist_id')
+
+
 def discard_artist_id(obj):
-    """Drop 'spotify_artist_id' from an album/item; it never outlives its album/track ID."""
-    if 'spotify_artist_id' in obj:
+    """Drop this object's own 'spotify_artist_id'; it never outlives its album/track ID.
+
+    Deletes tolerantly rather than guarding with ``in``: on a beets Item
+    ``'spotify_artist_id' in item`` is also True when only the item's album
+    carries the field, and the ``del`` would then raise.
+    """
+    try:
         del obj['spotify_artist_id']
+    except KeyError:
+        pass
 
 
 def set_artist_id(obj, spotify_obj, label=''):

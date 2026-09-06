@@ -87,7 +87,8 @@ Test files:
 - `test_plugin.py`, `test_matching.py`, `test_repair.py`, `test_cli.py`,
   `test_client.py`, `test_helpers.py`, `test_spotify_id_safety.py`,
   `test_artist_id.py`
-- `fakes.py` — shared `FakeItem` / `FakeAlbum`
+- `fakes.py` — shared `FakeItem` / `FakeAlbum`, modelling the beets album fallback
+  (an item's `get` / `in` / `[]` fall through to its album; `del` does not)
 - `plugin_test_utils.py` — beets/spotipy/cachetools stubs
 - `conftest.py` — installs stubs before collection
 
@@ -195,3 +196,9 @@ Track score weights (sum to 1.0):
   keep a blank attribute around that later looks like a stored ID.
 - `SpotifyAlbumMatchPlugin._clear_malformed_stored_ids` runs at the top of every album's
   processing, deleting blank/malformed stored IDs before they reach Spotify.
+- `spotify_artist_id` is registered on albums AND items, and beets makes an item read
+  its album's value for a field the item does not have (`get`, `in`, `[]` — but not
+  `del`). So never test an item's artist ID with `item.get(...)` or `in`: use
+  `helpers.own_artist_id(obj)`, which reads the object's own `_values_flex`. Deleting
+  goes through `helpers.discard_artist_id(obj)`, which swallows the `KeyError` beets
+  raises when the value seen through `in` actually belongs to the album.

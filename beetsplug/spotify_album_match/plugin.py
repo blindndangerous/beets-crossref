@@ -9,6 +9,7 @@ from .helpers import (
     clean_spotify_id,
     discard_artist_id,
     fuzzy_title_score,
+    own_artist_id,
     primary_artist_id,
     set_artist_id,
 )
@@ -62,6 +63,15 @@ CONFIG_DEFAULTS = {
     'use_track_fallback': False,                  # enable track-level search when no album match
     'max_track_search_queries': 3,                # max query variants per track (0 = unlimited)
 }
+
+
+def _needs_own_artist_id(obj, id_field):
+    """True when obj stores a valid ID in id_field but no artist ID of its own.
+
+    A beets Item with no artist ID reads its album's through ``get``/``in``, so
+    the album's value must never count as the item's.
+    """
+    return bool(clean_spotify_id(obj.get(id_field))) and not own_artist_id(obj)
 
 
 class SpotifyAlbumMatchPlugin(BeetsPlugin):
@@ -342,12 +352,11 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
 
     @staticmethod
     def _needs_artist_id_backfill(album):
-        """True when a stored album/track ID has no spotify_artist_id beside it."""
-        if clean_spotify_id(album.get('spotify_album_id')) and not album.get('spotify_artist_id'):
+        """True when a stored album/track ID has no own spotify_artist_id beside it."""
+        if _needs_own_artist_id(album, 'spotify_album_id'):
             return True
         return any(
-            clean_spotify_id(item.get('spotify_track_id')) and not item.get('spotify_artist_id')
-            for item in album.items()
+            _needs_own_artist_id(item, 'spotify_track_id') for item in album.items()
         )
 
     def _backfill_artist_ids(self, album, dry_run):
@@ -358,8 +367,16 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
         log_prefix = self._log_prefix(dry_run)
         album_id = clean_spotify_id(album.get('spotify_album_id'))
 
+        # Pick the pending items BEFORE the album's artist ID is stored: once it
+        # is, every item without its own reads the album's through the fallback
+        # and would look already filled.
+        pending_items = [
+            item for item in album.items()
+            if _needs_own_artist_id(item, 'spotify_track_id')
+        ]
+
         album_filled = False
-        if album_id and not album.get('spotify_artist_id'):
+        if _needs_own_artist_id(album, 'spotify_album_id'):
             artist_id = primary_artist_id(self.client.get_album(album_id))
             if artist_id:
                 album_filled = True
@@ -367,10 +384,6 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
                     album['spotify_artist_id'] = artist_id
                     album.store()
 
-        pending_items = [
-            item for item in album.items()
-            if clean_spotify_id(item.get('spotify_track_id')) and not item.get('spotify_artist_id')
-        ]
         tracks_filled = 0
         if pending_items:
             album_track_map = {}
@@ -401,10 +414,15 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
                     item['spotify_artist_id'] = artist_id
                     item.store()
 
-        log.info(
-            f"{log_prefix}Backfilled artist IDs: "
+        summary = (
+            f"{log_prefix}Backfilled artist IDs for "
+            f"'{album.albumartist} - {album.album}': "
             f"album={'yes' if album_filled else 'no'}, tracks={tracks_filled}"
         )
+        if album_filled or tracks_filled:
+            log.info(summary)
+        else:
+            log.debug(summary)
 
     # ------------------------------------------------------------------
     # ID clearing (IdClearer interface used by AlbumRepairer)
@@ -497,11 +515,13 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
             self._clear_malformed_artist_id(item, item.title, dry_run)
 
     def _clear_malformed_artist_id(self, obj, label, dry_run):
-        """Remove a blank or malformed stored artist ID left on its own."""
-        if 'spotify_artist_id' not in obj:
-            return
-        artist_id = obj.get('spotify_artist_id')
-        if clean_spotify_id(artist_id):
+        """Remove a blank or malformed stored artist ID left on its own.
+
+        Reads the object's OWN value: an item that only sees its album's artist
+        ID through the fallback has nothing of its own to clear.
+        """
+        artist_id = own_artist_id(obj)
+        if artist_id is None or clean_spotify_id(artist_id):
             return
         log.warning(
             f"{self._log_prefix(dry_run)}Clearing blank/malformed Spotify artist ID "

@@ -32,9 +32,13 @@ removed, so a stored artist ID always belongs to the album or track ID sitting b
 
 Albums matched before `spotify_artist_id` existed are filled in without being
 re-matched. When an album has a stored `spotify_album_id` or stored
-`spotify_track_id`s but is missing the matching artist IDs, the plugin looks up the
-stored album and its track list and writes the artist IDs from them, then logs one line
-such as `Backfilled artist IDs: album=yes, tracks=12`. A track that is not on the stored
+`spotify_track_id`s but is missing the matching artist IDs of its own, the plugin looks
+up the stored album and its track list and writes the artist IDs from them, then logs
+one line such as
+`Backfilled artist IDs for 'Portishead - Dummy': album=yes, tracks=12`. Tracks are
+backfilled with their own artist, never with the album's: beets lets a track read its
+album's value for a field it does not have, and the backfill ignores that so a
+compilation still ends up with one artist ID per track. A track that is not on the stored
 album (a bonus track matched from a related release, say) is resolved in a single bulk
 request. No search is performed, nothing is re-matched, and an album that already has all
 of its artist IDs costs zero API calls. Under `--dry-run` nothing is written.
