@@ -1,0 +1,193 @@
+"""Test infrastructure: stub beets/spotipy/cachetools so the plugin can be
+imported without the real packages, then load the package once per process.
+"""
+import importlib
+import pathlib
+import sys
+import types
+from unittest import mock
+
+
+# ---------------------------------------------------------------------------
+# Stub beets, spotipy, cachetools
+# ---------------------------------------------------------------------------
+
+class _ConfigValue:
+    def __init__(self, data, key):
+        self._data = data
+        self._key = key
+
+    def get(self, cast=None):
+        value = self._data.get(self._key)
+        if cast is None:
+            return value
+        if cast is bool:
+            if isinstance(value, str):
+                return value.strip().lower() in {"1", "true", "yes", "on"}
+            return bool(value)
+        try:
+            return cast(value)
+        except Exception:
+            return value
+
+    def as_number(self):
+        value = self._data.get(self._key)
+        try:
+            return float(value)
+        except Exception:
+            return 0.0
+
+
+class _Config:
+    def __init__(self):
+        self.data = {}
+
+    def add(self, values):
+        for key, value in values.items():
+            self.data.setdefault(key, value)
+
+    def __getitem__(self, key):
+        return _ConfigValue(self.data, key)
+
+
+def _build_stub_modules():
+    beets_module = types.ModuleType("beets")
+    beets_plugins = types.ModuleType("beets.plugins")
+    beets_ui = types.ModuleType("beets.ui")
+    beets_dbcore = types.ModuleType("beets.dbcore")
+    beets_dbcore_types = types.ModuleType("beets.dbcore.types")
+
+    class _StringType:
+        pass
+
+    beets_dbcore_types.STRING = _StringType()
+    beets_dbcore.types = beets_dbcore_types
+
+    class BeetsPlugin:
+        def __init__(self, name=None):
+            self.name = name
+            self.config = _Config()
+
+    class _Parser:
+        def __init__(self):
+            self.options = []
+
+        def add_option(self, *args, **kwargs):
+            self.options.append((args, kwargs))
+
+    class Subcommand:
+        def __init__(self, name, help=None):
+            self.name = name
+            self.help = help
+            self.parser = _Parser()
+            self.func = None
+
+    def decargs(args):
+        if args is None:
+            return None
+        if isinstance(args, list):
+            return " ".join(str(arg) for arg in args)
+        return str(args)
+
+    def colorize(_color, text):
+        return text
+
+    def print_(*args, **kwargs):
+        # mirror real beets.ui.print_ semantics for tests; route to print()
+        print(*args, **kwargs)
+
+    beets_plugins.BeetsPlugin = BeetsPlugin
+    beets_ui.Subcommand = Subcommand
+    beets_ui.decargs = decargs
+    beets_ui.colorize = colorize
+    beets_ui.print_ = print_
+    beets_module.plugins = beets_plugins
+    beets_module.ui = beets_ui
+    beets_module.dbcore = beets_dbcore
+
+    spotipy_module = types.ModuleType("spotipy")
+    spotipy_oauth2 = types.ModuleType("spotipy.oauth2")
+    spotipy_exceptions = types.ModuleType("spotipy.exceptions")
+
+    class Spotify:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+    class SpotifyClientCredentials:
+        def __init__(self, client_id=None, client_secret=None):
+            self.client_id = client_id
+            self.client_secret = client_secret
+
+    class SpotifyException(Exception):
+        def __init__(self, http_status=None, code=None, msg="", headers=None):
+            super().__init__(msg)
+            self.http_status = http_status
+            self.code = code
+            self.msg = msg
+            self.headers = headers or {}
+
+    spotipy_module.Spotify = Spotify
+    spotipy_oauth2.SpotifyClientCredentials = SpotifyClientCredentials
+    spotipy_exceptions.SpotifyException = SpotifyException
+
+    cachetools_module = types.ModuleType("cachetools")
+
+    class TTLCache(dict):
+        def __init__(self, maxsize=0, ttl=0):
+            super().__init__()
+            self.maxsize = maxsize
+            self.ttl = ttl
+
+    cachetools_module.TTLCache = TTLCache
+
+    return {
+        "beets": beets_module,
+        "beets.plugins": beets_plugins,
+        "beets.ui": beets_ui,
+        "beets.dbcore": beets_dbcore,
+        "beets.dbcore.types": beets_dbcore_types,
+        "spotipy": spotipy_module,
+        "spotipy.oauth2": spotipy_oauth2,
+        "spotipy.exceptions": spotipy_exceptions,
+        "cachetools": cachetools_module,
+    }
+
+
+# Stubs are installed once on first import; subsequent loads reuse them.
+_STUBS_INSTALLED = False
+_LOADED_PACKAGE = None
+
+
+def _ensure_stubs():
+    global _STUBS_INSTALLED
+    if _STUBS_INSTALLED:
+        return
+    sys.modules.update(_build_stub_modules())
+    repo_root = pathlib.Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    _STUBS_INSTALLED = True
+
+
+def load_package():
+    """Return the spotify_album_match package, loading it once per process."""
+    global _LOADED_PACKAGE
+    if _LOADED_PACKAGE is not None:
+        return _LOADED_PACKAGE
+    _ensure_stubs()
+    _LOADED_PACKAGE = importlib.import_module("beetsplug.spotify_album_match")
+    return _LOADED_PACKAGE
+
+
+def fresh_plugin():
+    """Return a freshly-instantiated plugin (config + client + matcher + repairer)."""
+    pkg = load_package()
+    return pkg.SpotifyAlbumMatchPlugin()
+
+
+# Backwards-compatible alias used by older test files.
+def load_plugin_module():
+    """Return the plugin module (the .plugin submodule) so tests can access internals."""
+    pkg = load_package()
+    return importlib.import_module("beetsplug.spotify_album_match.plugin")
