@@ -75,6 +75,16 @@ def _needs_own_artist_id(obj, id_field):
 
 
 class SpotifyAlbumMatchPlugin(BeetsPlugin):
+    item_types = {
+        'spotify_track_id': beets_types.STRING,
+        'spotify_artist_id': beets_types.STRING,
+    }
+
+    album_types = {
+        'spotify_album_id': beets_types.STRING,
+        'spotify_artist_id': beets_types.STRING,
+    }
+
     def __init__(self):
         super().__init__('spotify_album_match')
         self.config.add(CONFIG_DEFAULTS)
@@ -100,18 +110,6 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
 
     def commands(self):
         return [build_subcommand(self._run_spotify_match)]
-
-    def item_fields(self):
-        return {
-            'spotify_track_id': beets_types.STRING,
-            'spotify_artist_id': beets_types.STRING,
-        }
-
-    def album_fields(self):
-        return {
-            'spotify_album_id': beets_types.STRING,
-            'spotify_artist_id': beets_types.STRING,
-        }
 
     # ------------------------------------------------------------------
     # Top-level workflow

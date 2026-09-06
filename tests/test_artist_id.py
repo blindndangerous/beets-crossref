@@ -795,11 +795,17 @@ class ArtistIdFieldRegistrationTests(unittest.TestCase):
     def setUp(self):
         self.plugin = fresh_plugin()
 
-    def test_album_fields_declares_spotify_artist_id(self):
-        self.assertIn("spotify_artist_id", self.plugin.album_fields())
+    def test_album_types_declares_spotify_artist_id(self):
+        album_types = type(self.plugin).album_types
+        self.assertIsInstance(album_types, dict)
+        self.assertFalse(callable(album_types))
+        self.assertIn("spotify_artist_id", album_types)
 
-    def test_item_fields_declares_spotify_artist_id(self):
-        self.assertIn("spotify_artist_id", self.plugin.item_fields())
+    def test_item_types_declares_spotify_artist_id(self):
+        item_types = type(self.plugin).item_types
+        self.assertIsInstance(item_types, dict)
+        self.assertFalse(callable(item_types))
+        self.assertIn("spotify_artist_id", item_types)
 
 
 if __name__ == "__main__":

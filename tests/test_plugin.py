@@ -25,11 +25,11 @@ class PluginSmokeTests(unittest.TestCase):
         self.assertEqual(commands[0].name, "spotify-album-match")
         self.assertTrue(callable(commands[0].func))
 
-    def test_item_fields_declares_spotify_track_id(self):
-        self.assertIn("spotify_track_id", self.plugin.item_fields())
+    def test_item_types_declares_spotify_track_id(self):
+        self.assertIn("spotify_track_id", type(self.plugin).item_types)
 
-    def test_album_fields_declares_spotify_album_id(self):
-        self.assertIn("spotify_album_id", self.plugin.album_fields())
+    def test_album_types_declares_spotify_album_id(self):
+        self.assertIn("spotify_album_id", type(self.plugin).album_types)
 
 
 class ProcessSingleAlbumTests(unittest.TestCase):
