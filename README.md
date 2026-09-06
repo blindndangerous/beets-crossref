@@ -25,7 +25,8 @@ path formats, for example `beet ls spotify_album_id::.` or
 
 An artist ID is only ever written alongside the album or track ID it belongs to, and is
 deleted whenever that ID is cleared. If Spotify returns no usable primary artist, the
-album or track ID is still stored and the artist ID is simply left off.
+album or track ID is still stored and any artist ID already on that album or track is
+removed, so a stored artist ID always belongs to the album or track ID sitting beside it.
 
 ## Backfilling artist IDs
 

@@ -7,6 +7,7 @@ from beets.dbcore import types as beets_types
 from .helpers import (
     artist_set_score,
     clean_spotify_id,
+    discard_artist_id,
     fuzzy_title_score,
     primary_artist_id,
     set_artist_id,
@@ -61,12 +62,6 @@ CONFIG_DEFAULTS = {
     'use_track_fallback': False,                  # enable track-level search when no album match
     'max_track_search_queries': 3,                # max query variants per track (0 = unlimited)
 }
-
-
-def _discard_artist_id(obj):
-    """Drop 'spotify_artist_id' from an album/item; it never outlives its album/track ID."""
-    if 'spotify_artist_id' in obj:
-        del obj['spotify_artist_id']
 
 
 class SpotifyAlbumMatchPlugin(BeetsPlugin):
@@ -418,14 +413,14 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
             log.info(f"  -> {log_prefix}Clearing Spotify album ID for '{album.album}'")
             if not dry_run:
                 del album['spotify_album_id']
-                _discard_artist_id(album)
+                discard_artist_id(album)
                 album.store()
         for item in album.items():
             if 'spotify_track_id' in item:
                 log.info(f"  -> {log_prefix}Clearing Spotify track ID for: '{item.title}'")
                 if not dry_run:
                     del item['spotify_track_id']
-                    _discard_artist_id(item)
+                    discard_artist_id(item)
                     item.store()
 
     def clear_track_ids(self, items, dry_run):
@@ -443,7 +438,7 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
                 )
                 if not dry_run:
                     del item['spotify_track_id']
-                    _discard_artist_id(item)
+                    discard_artist_id(item)
                     item.store()
 
     # ------------------------------------------------------------------
@@ -474,7 +469,7 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
                 )
                 if not dry_run:
                     del album['spotify_album_id']
-                    _discard_artist_id(album)
+                    discard_artist_id(album)
                     album.store()
         self._clear_malformed_artist_id(album, album.album, dry_run)
 
@@ -488,7 +483,7 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
                     )
                     if not dry_run:
                         del item['spotify_track_id']
-                        _discard_artist_id(item)
+                        discard_artist_id(item)
                         item.store()
             self._clear_malformed_artist_id(item, item.title, dry_run)
 

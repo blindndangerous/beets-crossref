@@ -212,6 +212,70 @@ class AlbumMatchWritesArtistIdTests(unittest.TestCase):
         self.assertNotIn("spotify_artist_id", item2)
 
 
+class StaleArtistIdTests(unittest.TestCase):
+    """A stored artist ID must always belong to the currently stored album/track ID."""
+
+    @classmethod
+    def setUpClass(cls):
+        load_package()
+
+    def setUp(self):
+        self.plugin = fresh_plugin()
+        self.plugin.config.data["min_track_artist_score"] = 0.55
+
+    def test_album_rematched_without_artists_drops_stale_album_artist_id(self):
+        item = FakeItem("Track 1", artist="Artist", albumartist="Artist",
+                        track=1, disc=1, length=180.0)
+        album = FakeAlbum("Album", "Artist", items=[item])
+        album["spotify_album_id"] = RELATED_ALBUM_ID
+        album["spotify_artist_id"] = ARTIST_RELATED
+        self.plugin.config.data["verify_existing_ids"] = False
+        # The new match carries no 'artists' at all.
+        spotify_album = {"id": ALBUM_ID, "name": "Album"}
+        tracks = [spotify_track(TRACK_ID_1, "Track 1", ARTIST_TRACK_1)]
+
+        with mock.patch.object(self.plugin.matcher, "find_best_album_match",
+                               return_value=(spotify_album, [])):
+            with mock.patch.object(self.plugin.client, "get_album_tracks",
+                                   return_value=tracks):
+                self.plugin._process_single_album(
+                    album, dry_run=False, interactive=False, force=False,
+                    provided_album_id=None,
+                )
+
+        self.assertEqual(album.get("spotify_album_id"), ALBUM_ID)
+        self.assertNotIn("spotify_artist_id", album)
+
+    def test_track_rematched_without_artist_id_drops_stale_item_artist_id(self):
+        item = FakeItem("Track 1", artist="Artist", albumartist="Artist",
+                        track=1, disc=1, length=180.0)
+        item["spotify_track_id"] = OUTSIDE_TRACK_ID
+        item["spotify_artist_id"] = ARTIST_TRACK_2
+        album = FakeAlbum("Album", "Artist", items=[item])
+        spotify_album = {
+            "id": ALBUM_ID, "name": "Album",
+            "artists": [{"id": ARTIST_ALBUM, "name": "Artist"}],
+        }
+        # The newly matched track names an artist but exposes no usable ID.
+        tracks = [{
+            "id": TRACK_ID_1, "name": "Track 1",
+            "artists": [{"name": "Artist"}],
+            "disc_number": 1, "track_number": 1, "duration_ms": 180000,
+        }]
+
+        with mock.patch.object(self.plugin.matcher, "find_best_album_match",
+                               return_value=(spotify_album, [])):
+            with mock.patch.object(self.plugin.client, "get_album_tracks",
+                                   return_value=tracks):
+                self.plugin._process_single_album(
+                    album, dry_run=False, interactive=False, force=False,
+                    provided_album_id=None,
+                )
+
+        self.assertEqual(item.get("spotify_track_id"), TRACK_ID_1)
+        self.assertNotIn("spotify_artist_id", item)
+
+
 class PrimaryArtistIdTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

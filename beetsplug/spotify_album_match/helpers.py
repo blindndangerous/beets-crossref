@@ -82,16 +82,28 @@ def primary_artist_id(spotify_obj):
     return clean_spotify_id(first_artist.get('id'))
 
 
+def discard_artist_id(obj):
+    """Drop 'spotify_artist_id' from an album/item; it never outlives its album/track ID."""
+    if 'spotify_artist_id' in obj:
+        del obj['spotify_artist_id']
+
+
 def set_artist_id(obj, spotify_obj, label=''):
     """Store 'spotify_artist_id' on a beets album/item from a Spotify object.
 
-    Stores nothing when the primary artist ID is missing or malformed. The
-    caller owns the dry-run check and the following ``store()`` call.
+    When the primary artist ID is missing or malformed, any artist ID already
+    on the object is deleted: the caller is storing a new album/track ID, and a
+    leftover artist ID would then belong to the previous match. The caller owns
+    the dry-run check and the following ``store()`` call.
     Returns True when a value was written.
     """
     artist_id = primary_artist_id(spotify_obj)
     if not artist_id:
-        log.debug(f"No usable primary Spotify artist ID for '{label}'. Storing none.")
+        log.debug(
+            f"No usable primary Spotify artist ID for '{label}'. "
+            "Storing none and dropping any stale value."
+        )
+        discard_artist_id(obj)
         return False
     obj['spotify_artist_id'] = artist_id
     return True
