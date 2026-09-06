@@ -17,6 +17,7 @@ from .helpers import (
     find_matching_spotify_track,
     fuzzy_title_score,
     is_variant_title,
+    set_artist_id,
 )
 
 log = logging.getLogger("beets.spotify_album_match")
@@ -385,6 +386,7 @@ class AlbumMatcher:
                     )
                     if not dry_run:
                         item['spotify_track_id'] = new_id
+                        set_artist_id(item, matched_track, label=item.title)
                         item.store()
                 unmatched_spotify_tracks.remove(matched_track)
             else:

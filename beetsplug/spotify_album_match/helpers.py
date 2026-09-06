@@ -2,9 +2,12 @@
 
 Importable without any beets/spotipy dependencies.
 """
+import logging
 import re
 
 from thefuzz import fuzz
+
+log = logging.getLogger("beets.spotify_album_match")
 
 VARIANT_KEYWORDS = [
     "deluxe",
@@ -61,6 +64,37 @@ def clean_spotify_id(value):
     if SPOTIFY_ID_PATTERN.fullmatch(value):
         return value
     return None
+
+
+def primary_artist_id(spotify_obj):
+    """Return the cleaned Spotify ID of an album's or track's primary artist.
+
+    Returns None when the object carries no usable ``artists`` entry.
+    """
+    if not isinstance(spotify_obj, dict):
+        return None
+    artists = spotify_obj.get('artists') or []
+    if not artists:
+        return None
+    first_artist = artists[0]
+    if not isinstance(first_artist, dict):
+        return None
+    return clean_spotify_id(first_artist.get('id'))
+
+
+def set_artist_id(obj, spotify_obj, label=''):
+    """Store 'spotify_artist_id' on a beets album/item from a Spotify object.
+
+    Stores nothing when the primary artist ID is missing or malformed. The
+    caller owns the dry-run check and the following ``store()`` call.
+    Returns True when a value was written.
+    """
+    artist_id = primary_artist_id(spotify_obj)
+    if not artist_id:
+        log.debug(f"No usable primary Spotify artist ID for '{label}'. Storing none.")
+        return False
+    obj['spotify_artist_id'] = artist_id
+    return True
 
 
 def strip_version_tokens(text):

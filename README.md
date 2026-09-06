@@ -13,10 +13,30 @@ and clears the ones that are wrong.
 
 - `spotify_album_id` — album-level flexible field, the 22-character Spotify album ID
 - `spotify_track_id` — item-level flexible field, the 22-character Spotify track ID
+- `spotify_artist_id` — written on both albums and items, the 22-character Spotify ID
+  of the primary artist. On an album it is the primary artist of the matched Spotify
+  album; on an item it is the primary artist of the matched Spotify track, so tracks on
+  a compilation each keep their own artist. Only the primary artist is stored, never a
+  list.
 
-Both are registered as beets `STRING` types, so you can query and use them in
+All three are registered as beets `STRING` types, so you can query and use them in
 path formats, for example `beet ls spotify_album_id::.` or
 `beet ls -a spotify_album_id:4aawyAB9vmqN3uQ7FjRGTy`.
+
+An artist ID is only ever written alongside the album or track ID it belongs to, and is
+deleted whenever that ID is cleared. If Spotify returns no usable primary artist, the
+album or track ID is still stored and the artist ID is simply left off.
+
+## Backfilling artist IDs
+
+Albums matched before `spotify_artist_id` existed are filled in without being
+re-matched. When an album has a stored `spotify_album_id` or stored
+`spotify_track_id`s but is missing the matching artist IDs, the plugin looks up the
+stored album and its track list and writes the artist IDs from them, then logs one line
+such as `Backfilled artist IDs: album=yes, tracks=12`. A track that is not on the stored
+album (a bonus track matched from a related release, say) is looked up individually. No
+search is performed, nothing is re-matched, and an album that already has all of its
+artist IDs costs zero API calls. Under `--dry-run` nothing is written.
 
 IDs are validated before they are used or stored. Anything that is not exactly
 22 base62 characters is treated as absent: it is never sent to the Spotify API,

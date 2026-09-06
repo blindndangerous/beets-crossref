@@ -1,6 +1,6 @@
 # spotify_album_match
 
-A beets plugin that matches local albums and tracks to Spotify, writing `spotify_album_id` and `spotify_track_id` fields to the beets library.
+A beets plugin that matches local albums and tracks to Spotify, writing `spotify_album_id`, `spotify_track_id` and `spotify_artist_id` fields to the beets library.
 
 ## User
 
@@ -84,7 +84,8 @@ Package modules:
 Test files:
 
 - `test_plugin.py`, `test_matching.py`, `test_repair.py`, `test_cli.py`,
-  `test_client.py`, `test_helpers.py`, `test_spotify_id_safety.py`
+  `test_client.py`, `test_helpers.py`, `test_spotify_id_safety.py`,
+  `test_artist_id.py`
 - `fakes.py` — shared `FakeItem` / `FakeAlbum`
 - `plugin_test_utils.py` — beets/spotipy/cachetools stubs
 - `conftest.py` — installs stubs before collection

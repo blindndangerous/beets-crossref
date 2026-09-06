@@ -4,7 +4,13 @@ import logging
 from beets.plugins import BeetsPlugin
 from beets.dbcore import types as beets_types
 
-from .helpers import artist_set_score, clean_spotify_id, fuzzy_title_score
+from .helpers import (
+    artist_set_score,
+    clean_spotify_id,
+    fuzzy_title_score,
+    primary_artist_id,
+    set_artist_id,
+)
 from .client import RateLimitAbort, SpotifyClient
 from .cli import (
     InteractivePrompter,
@@ -57,6 +63,12 @@ CONFIG_DEFAULTS = {
 }
 
 
+def _discard_artist_id(obj):
+    """Drop 'spotify_artist_id' from an album/item; it never outlives its album/track ID."""
+    if 'spotify_artist_id' in obj:
+        del obj['spotify_artist_id']
+
+
 class SpotifyAlbumMatchPlugin(BeetsPlugin):
     def __init__(self):
         super().__init__('spotify_album_match')
@@ -85,10 +97,16 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
         return [build_subcommand(self._run_spotify_match)]
 
     def item_fields(self):
-        return {'spotify_track_id': beets_types.STRING}
+        return {
+            'spotify_track_id': beets_types.STRING,
+            'spotify_artist_id': beets_types.STRING,
+        }
 
     def album_fields(self):
-        return {'spotify_album_id': beets_types.STRING}
+        return {
+            'spotify_album_id': beets_types.STRING,
+            'spotify_artist_id': beets_types.STRING,
+        }
 
     # ------------------------------------------------------------------
     # Top-level workflow
@@ -169,6 +187,9 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
             self._apply_provided_album_id(album, provided_album_id, dry_run, force)
             return
 
+        if self._needs_artist_id_backfill(album):
+            self._backfill_artist_ids(album, dry_run)
+
         verify_existing = self.config['verify_existing_ids'].get(bool)
         if not force and not verify_existing and all(item.get('spotify_track_id') for item in album.items()):
             log.debug(f"Skipping album with all tracks matched: {album.album}")
@@ -200,6 +221,7 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
 
         if not dry_run:
             album['spotify_album_id'] = spotify_album['id']
+            set_artist_id(album, spotify_album, label=album.album)
             album.store()
 
         unmatched_items = self._apply_authoritative_album_mapping(album, spotify_album['id'], dry_run)
@@ -295,6 +317,7 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
 
         if not dry_run:
             album['spotify_album_id'] = spotify_album.get('id', album_id)
+            set_artist_id(album, spotify_album, label=album.album)
             album.store()
 
         effective_album_id = spotify_album.get('id', album_id)
@@ -319,6 +342,67 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
         )
 
     # ------------------------------------------------------------------
+    # Artist ID backfill for albums matched before spotify_artist_id existed
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _needs_artist_id_backfill(album):
+        """True when a stored album/track ID has no spotify_artist_id beside it."""
+        if clean_spotify_id(album.get('spotify_album_id')) and not album.get('spotify_artist_id'):
+            return True
+        return any(
+            clean_spotify_id(item.get('spotify_track_id')) and not item.get('spotify_artist_id')
+            for item in album.items()
+        )
+
+    def _backfill_artist_ids(self, album, dry_run):
+        """Fill missing artist IDs from the already-stored album/track IDs.
+
+        Never re-matches: the stored IDs are trusted and only looked up.
+        """
+        log_prefix = self._log_prefix(dry_run)
+        album_id = clean_spotify_id(album.get('spotify_album_id'))
+
+        album_filled = False
+        if album_id and not album.get('spotify_artist_id'):
+            artist_id = primary_artist_id(self.client.get_album(album_id))
+            if artist_id:
+                album_filled = True
+                if not dry_run:
+                    album['spotify_artist_id'] = artist_id
+                    album.store()
+
+        pending_items = [
+            item for item in album.items()
+            if clean_spotify_id(item.get('spotify_track_id')) and not item.get('spotify_artist_id')
+        ]
+        tracks_filled = 0
+        if pending_items:
+            album_track_map = {}
+            if album_id:
+                for track in self.client.get_album_tracks(album_id) or []:
+                    track_id = track.get('id')
+                    if track_id:
+                        album_track_map[track_id] = track
+            for item in pending_items:
+                track_id = clean_spotify_id(item.get('spotify_track_id'))
+                # Tracks matched from a related release are not on this album.
+                spotify_track = album_track_map.get(track_id) or self.client.get_track(track_id)
+                artist_id = primary_artist_id(spotify_track)
+                if not artist_id:
+                    log.debug(f"No usable primary Spotify artist ID for '{item.title}'.")
+                    continue
+                tracks_filled += 1
+                if not dry_run:
+                    item['spotify_artist_id'] = artist_id
+                    item.store()
+
+        log.info(
+            f"{log_prefix}Backfilled artist IDs: "
+            f"album={'yes' if album_filled else 'no'}, tracks={tracks_filled}"
+        )
+
+    # ------------------------------------------------------------------
     # ID clearing (IdClearer interface used by AlbumRepairer)
     # ------------------------------------------------------------------
 
@@ -334,12 +418,14 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
             log.info(f"  -> {log_prefix}Clearing Spotify album ID for '{album.album}'")
             if not dry_run:
                 del album['spotify_album_id']
+                _discard_artist_id(album)
                 album.store()
         for item in album.items():
             if 'spotify_track_id' in item:
                 log.info(f"  -> {log_prefix}Clearing Spotify track ID for: '{item.title}'")
                 if not dry_run:
                     del item['spotify_track_id']
+                    _discard_artist_id(item)
                     item.store()
 
     def clear_track_ids(self, items, dry_run):
@@ -357,6 +443,7 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
                 )
                 if not dry_run:
                     del item['spotify_track_id']
+                    _discard_artist_id(item)
                     item.store()
 
     # ------------------------------------------------------------------
@@ -387,21 +474,38 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
                 )
                 if not dry_run:
                     del album['spotify_album_id']
+                    _discard_artist_id(album)
                     album.store()
+        self._clear_malformed_artist_id(album, album.album, dry_run)
 
         for item in album.items():
-            if 'spotify_track_id' not in item:
-                continue
-            track_id = item.get('spotify_track_id')
-            if clean_spotify_id(track_id):
-                continue
-            log.warning(
-                f"{log_prefix}Clearing blank/malformed Spotify track ID "
-                f"for '{item.title}': {track_id!r}"
-            )
-            if not dry_run:
-                del item['spotify_track_id']
-                item.store()
+            if 'spotify_track_id' in item:
+                track_id = item.get('spotify_track_id')
+                if not clean_spotify_id(track_id):
+                    log.warning(
+                        f"{log_prefix}Clearing blank/malformed Spotify track ID "
+                        f"for '{item.title}': {track_id!r}"
+                    )
+                    if not dry_run:
+                        del item['spotify_track_id']
+                        _discard_artist_id(item)
+                        item.store()
+            self._clear_malformed_artist_id(item, item.title, dry_run)
+
+    def _clear_malformed_artist_id(self, obj, label, dry_run):
+        """Remove a blank or malformed stored artist ID left on its own."""
+        if 'spotify_artist_id' not in obj:
+            return
+        artist_id = obj.get('spotify_artist_id')
+        if clean_spotify_id(artist_id):
+            return
+        log.warning(
+            f"{self._log_prefix(dry_run)}Clearing blank/malformed Spotify artist ID "
+            f"for '{label}': {artist_id!r}"
+        )
+        if not dry_run:
+            del obj['spotify_artist_id']
+            obj.store()
 
     @staticmethod
     def _clear_progress_file(progress_file):

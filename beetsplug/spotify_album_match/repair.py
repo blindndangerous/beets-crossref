@@ -11,6 +11,7 @@ import logging
 from .helpers import (
     artist_set_score,
     fuzzy_title_score,
+    set_artist_id,
 )
 
 log = logging.getLogger("beets.spotify_album_match")
@@ -257,6 +258,7 @@ class AlbumRepairer:
                     )
                     if not dry_run:
                         album['spotify_album_id'] = release_id
+                        set_artist_id(album, release, label=album.album)
                         album.store()
                 # Already matched in match_items_to_tracks above; do NOT re-run authoritative
                 # mapping over the whole album — that would overwrite already-correct IDs
@@ -303,6 +305,7 @@ class AlbumRepairer:
                 log.info(f"  -> {log_prefix}{action} '{item.title}' -> Spotify ID: {new_id}")
                 if not dry_run:
                     item['spotify_track_id'] = new_id
+                    set_artist_id(item, match, label=item.title)
                     item.store()
                 album_id = match.get('album', {}).get('id')
                 if album_id:
@@ -336,6 +339,7 @@ class AlbumRepairer:
                     )
                 if not dry_run:
                     album['spotify_album_id'] = best_album_id
+                    set_artist_id(album, consensus_album_obj, label=album.album)
                     album.store()
                 else:
                     new_album_id = best_album_id
