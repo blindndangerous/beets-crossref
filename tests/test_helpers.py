@@ -11,6 +11,7 @@ from beetsplug.spotify_album_match.helpers import (
     build_track_search_queries,
     escape_query_value,
     find_matching_spotify_track,
+    fuzzy_title_score,
     is_variant_title,
     normalize_title,
     split_artist_tokens,
@@ -30,24 +31,28 @@ class DummyItem:
 
 
 class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
-    def test_escape_query_value_escapes_quotes_and_backslashes(self):
+    def test_escape_query_value_drops_quotes_and_backslashes(self):
+        # Spotify search has no escape syntax: an escaped quote is matched
+        # literally, so the query returns nothing at all.
         escaped = escape_query_value('The "Best" \\ Album')
-        self.assertEqual(escaped, 'The \\"Best\\" \\\\ Album')
+        self.assertEqual(escaped, 'The Best Album')
 
-    def test_album_queries_escape_quoted_metadata(self):
+    def test_album_queries_drop_quotes_from_metadata(self):
         queries = build_album_search_queries('The "Best" Album', 'Artist "Name"')
-        self.assertTrue(any('album:"The \\"Best\\" Album"' in query for query in queries))
-        self.assertTrue(any('artist:"Artist \\"Name\\""' in query for query in queries))
+        self.assertTrue(any('album:"The Best Album"' in query for query in queries))
+        self.assertTrue(any('artist:"Artist Name"' in query for query in queries))
+        self.assertFalse(any('\\' in query for query in queries))
 
-    def test_track_queries_escape_quoted_metadata(self):
+    def test_track_queries_drop_quotes_from_metadata(self):
         queries = build_track_search_queries(
             'Song "A"',
             'Artist "B"',
             'Album "C"',
         )
-        self.assertTrue(any('track:"Song \\"A\\""' in query for query in queries))
-        self.assertTrue(any('artist:"Artist \\"B\\""' in query for query in queries))
-        self.assertTrue(any('album:"Album \\"C\\""' in query for query in queries))
+        self.assertTrue(any('track:"Song A"' in query for query in queries))
+        self.assertTrue(any('artist:"Artist B"' in query for query in queries))
+        self.assertTrue(any('album:"Album C"' in query for query in queries))
+        self.assertFalse(any('\\' in query for query in queries))
 
     def test_artist_split_does_not_break_acdc_or_x_ambassadors(self):
         self.assertEqual(split_artist_tokens("AC/DC"), ["ac dc"])
@@ -152,8 +157,7 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         self.assertEqual(strip_version_tokens("Album - Remastered"), "Album")
 
     def test_strip_version_tokens_removes_inline_keyword(self):
-        result = strip_version_tokens("Remastered Album")
-        self.assertNotIn("Remastered", result)
+        self.assertEqual(strip_version_tokens("Remastered Album"), "Album")
 
     def test_strip_version_tokens_no_change_without_keywords(self):
         self.assertEqual(strip_version_tokens("Simple Album Title"), "Simple Album Title")
@@ -177,6 +181,13 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
 
     def test_normalize_title_empty_returns_empty(self):
         self.assertEqual(normalize_title(""), "")
+
+    def test_normalize_title_keeps_titles_made_only_of_variant_keywords(self):
+        # "Live", "Bonus" and friends strip to nothing; without a fallback such
+        # a title can never match, not even against an identical one.
+        self.assertEqual(normalize_title("Bonus"), "bonus")
+        self.assertEqual(normalize_title("Live"), "live")
+        self.assertEqual(fuzzy_title_score("Bonus", "Bonus"), 1.0)
 
     # --- is_variant_title ---
 
@@ -207,6 +218,77 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         self.assertEqual(artist_set_score("", "Artist"), 0.0)
         self.assertEqual(artist_set_score("Artist", ""), 0.0)
         self.assertEqual(artist_set_score("", []), 0.0)
+
+    # --- find_matching_spotify_track track position ---
+
+    def test_track_matching_applies_position_bonus_when_disc_is_untagged(self):
+        """beets stores disc 0 for a file with no disc tag, which is common.
+
+        Without the position bonus the ceiling is 0.60 + 0.25 + 0.05 = 0.90,
+        exactly the default track_match_threshold, so any title deviation at
+        all fails. fuzzy_title_score("Song Pt. 1", "Song, Part 1") is 0.90.
+        """
+        item = DummyItem(
+            title="Song Pt. 1", artist="Artist", albumartist="Artist",
+            track=1, disc=0, length=300.0,
+        )
+        tracks = [{
+            "id": "right_track",
+            "name": "Song, Part 1",
+            "artists": [{"name": "Artist"}],
+            "track_number": 1,
+            "disc_number": 1,
+            "duration_ms": 300000,
+        }]
+        match = find_matching_spotify_track(
+            item, tracks, duration_tolerance=3,
+            match_threshold=0.90, min_artist_score=0.90,
+        )
+        self.assertIsNotNone(match)
+        self.assertEqual(match["id"], "right_track")
+
+    def test_track_matching_uses_position_to_separate_sibling_movements(self):
+        """Bracketed text is stripped before scoring, so movements tie on title.
+
+        With disc 0 disabling the position bonus, the second movement was
+        assigned the first movement's Spotify ID.
+        """
+        movement_two = DummyItem(
+            title="Suite (II. Adagio)", artist="Artist", albumartist="Artist",
+            track=2, disc=0, length=302.0,
+        )
+        tracks = [
+            {
+                "id": "movement_one", "name": "Suite (I. Allegro)",
+                "artists": [{"name": "Artist"}],
+                "track_number": 1, "disc_number": 1, "duration_ms": 300000,
+            },
+            {
+                "id": "movement_two", "name": "Suite (II. Adagio)",
+                "artists": [{"name": "Artist"}],
+                "track_number": 2, "disc_number": 1, "duration_ms": 302000,
+            },
+        ]
+        match = find_matching_spotify_track(
+            movement_two, tracks, duration_tolerance=3,
+            match_threshold=0.90, min_artist_score=0.90,
+        )
+        self.assertEqual(match["id"], "movement_two")
+
+    def test_track_matching_does_not_bonus_across_different_discs(self):
+        item = DummyItem(
+            title="Song", artist="Artist", albumartist="Artist", track=1, disc=2,
+        )
+        tracks = [{
+            "id": "disc_one_track_one", "name": "Song",
+            "artists": [{"name": "Artist"}],
+            "track_number": 1, "disc_number": 1, "duration_ms": 200000,
+        }]
+        match = find_matching_spotify_track(
+            item, tracks, duration_tolerance=3,
+            match_threshold=0.90, min_artist_score=0.90,
+        )
+        self.assertIsNone(match)
 
     # --- find_matching_spotify_track ISRC ---
 

@@ -10,6 +10,7 @@ import logging
 from spotipy.exceptions import SpotifyException
 
 from .helpers import (
+    album_barcode,
     artist_set_score,
     build_album_search_queries,
     build_track_search_queries,
@@ -49,16 +50,11 @@ class AlbumMatcher:
         Tries UPC first, then text-search candidates. Selection considers
         title/artist scores, popularity, and variant-vs-standard preference.
         """
-        if hasattr(local_album, 'upc') and local_album.upc:
-            query = f'upc:{local_album.upc}'
-            log.info(f"  -> Searching Spotify by UPC: {query}")
-            try:
-                results = self.client.search(q=query, type='album', limit=1)
-                if results and results.get("albums", {}).get("items"):
-                    log.info(f"  -> Found direct match via UPC for '{local_album.album}'")
-                    return results["albums"]["items"][0], []
-            except SpotifyException:
-                log.warning("  -> Searching by UPC failed. Falling back to search.")
+        barcode = album_barcode(local_album)
+        if barcode:
+            upc_match = self._search_by_upc(local_album, barcode)
+            if upc_match:
+                return upc_match, []
 
         candidates_by_id = self._search_album_candidates(local_album)
         if not candidates_by_id:
@@ -71,6 +67,44 @@ class AlbumMatcher:
             return None, []
 
         return self._select_album_candidate(local_album, local_items, candidates, interactive)
+
+    def _search_by_upc(self, local_album, barcode):
+        """Return the Spotify album for a barcode, or None.
+
+        The hit is checked against the local title and artist before it is
+        trusted: a barcode search returns exactly one release and a mistagged
+        barcode would otherwise be accepted with no evidence at all.
+        """
+        query = f'upc:{barcode}'
+        log.info(f"  -> Searching Spotify by UPC: {query}")
+        try:
+            results = self.client.search(q=query, type='album', limit=1)
+        except SpotifyException:
+            log.warning("  -> Searching by UPC failed. Falling back to search.")
+            return None
+
+        items = results.get("albums", {}).get("items", []) if isinstance(results, dict) else []
+        sp_album = items[0] if items else None
+        if not sp_album or not isinstance(sp_album, dict):
+            return None
+
+        title_score = fuzzy_title_score(local_album.album, sp_album.get('name', ''))
+        artist_score = artist_set_score(
+            local_album.albumartist,
+            [artist.get('name', '') for artist in sp_album.get('artists', [])],
+        )
+        validation_score = (title_score * 0.6) + (artist_score * 0.4)
+        threshold = self.config['existing_album_validation_threshold'].as_number()
+        if validation_score < threshold:
+            log.warning(
+                f"  -> UPC hit '{sp_album.get('name', '')}' does not match "
+                f"'{local_album.album}' (score {validation_score:.2f} < "
+                f"{threshold:.2f}). Falling back to search."
+            )
+            return None
+
+        log.info(f"  -> Found direct match via UPC for '{local_album.album}'")
+        return sp_album
 
     def build_candidate_from_album_id(self, album_id, local_album, local_items):
         """Build a candidate dict from a known Spotify album ID (for --sid / interactive)."""

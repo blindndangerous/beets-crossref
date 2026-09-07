@@ -68,6 +68,26 @@ def clean_spotify_id(value):
     return None
 
 
+def album_barcode(local_album):
+    """Return a beets album's barcode as a plain string, or None.
+
+    beets stores it in the fixed 'barcode' field (beets 2.2.0 library.py:1188);
+    there is no 'upc' field, so a value under that name can only be one a user
+    added by hand.
+    """
+    values = [getattr(local_album, 'barcode', None)]
+    getter = getattr(local_album, 'get', None)
+    if callable(getter):
+        values.append(getter('upc'))
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return None
+
+
 def primary_artist_id(spotify_obj):
     """Return the cleaned Spotify ID of an album's or track's primary artist.
 
@@ -146,7 +166,13 @@ def normalize_text(text):
 
 
 def normalize_title(text):
-    return normalize_text(strip_version_tokens(text))
+    stripped = normalize_text(strip_version_tokens(text))
+    if stripped:
+        return stripped
+    # A title made only of variant keywords -- "Live", "Bonus", "Remixes" --
+    # strips to nothing and would then score 0 even against itself. Fall back
+    # to the unstripped text so those titles can still match.
+    return normalize_text(text)
 
 
 def is_variant_title(text):
@@ -245,12 +271,16 @@ def artist_set_score(local_artist, candidate_artists):
 
 
 def escape_query_value(value):
+    """Make a value safe to drop inside a quoted Spotify search field.
+
+    Spotify's search syntax has no escape mechanism, so a backslash-escaped
+    quote is matched literally and the query returns nothing. Dropping the
+    characters costs a little precision and always returns results.
+    """
     if value is None:
         return ""
-    clean = " ".join(str(value).split())
-    clean = clean.replace("\\", "\\\\")
-    clean = clean.replace('"', '\\"')
-    return clean
+    clean = str(value).replace("\\", " ").replace('"', " ")
+    return " ".join(clean.split())
 
 
 def _add_unique_query(queries, seen, query):
@@ -369,6 +399,9 @@ def find_matching_spotify_track(
     duration_mismatch_penalty_threshold=10,
     duration_mismatch_penalty=0.10,
 ):
+    # ISRC short-circuit. Only fires for full Spotify track objects: the
+    # simplified objects in an album's track list carry no external_ids, so
+    # every caller that passes /albums/{id}/tracks output skips this.
     if item.isrc:
         for track in spotify_tracks:
             if track.get("external_ids", {}).get("isrc", "").lower() == item.isrc.lower():
@@ -392,10 +425,18 @@ def find_matching_spotify_track(
             # No artist info available — use a neutral score rather than 0 or 1
             artist_score = 0.5
 
+        # A file with no disc tag has disc 0 in beets, which is common; treat
+        # both sides' missing disc as disc 1 so the position bonus still
+        # separates tracks whose titles are near-identical.
+        local_disc = item.disc or 1
+        spotify_disc = track.get("disc_number") or 1
         position_bonus = 0.0
-        if item.track and item.disc:
-            if track.get("track_number") == item.track and track.get("disc_number") == item.disc:
-                position_bonus = 0.15
+        if (
+            item.track
+            and track.get("track_number") == item.track
+            and spotify_disc == local_disc
+        ):
+            position_bonus = 0.15
 
         duration_adjustment = 0.0
         if item.length:

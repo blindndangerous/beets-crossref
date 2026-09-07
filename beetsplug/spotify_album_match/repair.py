@@ -127,6 +127,11 @@ class AlbumRepairer:
 
         - mismatched: stored ID is on this album but disc/track/ISRC disagree, OR not on this album
         - missing: item has no spotify_track_id stored
+
+        The ISRC comparison only has anything to compare when *spotify_tracks*
+        holds full track objects: an album's track list is made of simplified
+        objects, which carry no external_ids. Position is the signal that
+        actually runs here.
         """
         track_map = {}
         for track in spotify_tracks:
