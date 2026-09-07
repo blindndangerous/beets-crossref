@@ -11,8 +11,8 @@ import requests
 from cachetools import TTLCache
 from spotipy import Spotify
 from spotipy.cache_handler import MemoryCacheHandler
-from spotipy.oauth2 import SpotifyClientCredentials
 from spotipy.exceptions import SpotifyException
+from spotipy.oauth2 import SpotifyClientCredentials
 
 from .helpers import clean_spotify_id
 
@@ -287,7 +287,7 @@ class SpotifyClient:
                         raise RateLimitAbort(
                             f"Rate limited by Spotify. Aborting run to avoid longer bans "
                             f"(waiting {retry_after}s would be required)."
-                        )
+                        ) from e
                     log.warning(f"Rate limited. Retrying in {retry_after} seconds...")
                     self._set_rate_limit(retry_after)
                     continue
@@ -305,7 +305,7 @@ class SpotifyClient:
                 log.warning(f"Spotify request failed ({e}). Retrying...")
                 time.sleep(self.retry_delay * (attempt + 1))
         log.error(f"Request failed after {self.max_retries} retries.")
-        raise SpotifyException(http_status=0, code=-1, msg="Max retries exceeded.")
+        raise SpotifyException(http_status=0, code=-1, msg="Max retries exceeded.") from None
 
     def _wait_for_request_slot(self):
         while True:

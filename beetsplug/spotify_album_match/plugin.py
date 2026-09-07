@@ -1,19 +1,9 @@
 """Beets plugin entry point and top-level per-album workflow."""
 import logging
 
-from beets.plugins import BeetsPlugin
 from beets.dbcore import types as beets_types
+from beets.plugins import BeetsPlugin
 
-from .helpers import (
-    artist_set_score,
-    clean_spotify_id,
-    discard_artist_id,
-    fuzzy_title_score,
-    own_artist_id,
-    primary_artist_id,
-    set_artist_id,
-)
-from .client import RateLimitAbort, SpotifyClient
 from .cli import (
     InteractivePrompter,
     UserAbort,
@@ -24,6 +14,16 @@ from .cli import (
     parse_args,
     sanitize_progress_file_path,
     save_progress,
+)
+from .client import RateLimitAbort, SpotifyClient
+from .helpers import (
+    artist_set_score,
+    clean_spotify_id,
+    discard_artist_id,
+    fuzzy_title_score,
+    own_artist_id,
+    primary_artist_id,
+    set_artist_id,
 )
 from .matching import AlbumMatcher
 from .repair import AlbumRepairer

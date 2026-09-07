@@ -7,8 +7,8 @@ from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from plugin_test_utils import fresh_plugin, load_package
 from fakes import FakeAlbum, FakeItem
+from plugin_test_utils import fresh_plugin, load_package
 
 
 class PluginSmokeTests(unittest.TestCase):
@@ -172,7 +172,9 @@ class ProcessSingleAlbumTests(unittest.TestCase):
                         self.plugin.repairer, "fallback_track_search",
                         wraps=self.plugin.repairer.fallback_track_search,
                     ) as fallback_mock:
-                        with mock.patch.object(self.plugin.matcher, "find_best_album_match") as find_album_mock:
+                        with mock.patch.object(
+                            self.plugin.matcher, "find_best_album_match",
+                        ) as find_album_mock:
                             self.plugin._process_single_album(
                                 album, dry_run=False, interactive=False,
                                 force=False, provided_album_id=None,
@@ -205,7 +207,9 @@ class ProcessSingleAlbumTests(unittest.TestCase):
                     return_value=[item1, item2],
                 ):
                     with mock.patch.object(self.plugin.repairer, "fallback_track_search") as fallback_mock:
-                        with mock.patch.object(self.plugin.matcher, "find_best_album_match") as find_album_mock:
+                        with mock.patch.object(
+                            self.plugin.matcher, "find_best_album_match",
+                        ) as find_album_mock:
                             self.plugin._process_single_album(
                                 album, dry_run=False, interactive=False,
                                 force=False, provided_album_id=None,
@@ -238,8 +242,12 @@ class ProcessSingleAlbumTests(unittest.TestCase):
                             self.plugin.repairer, "repair_from_related_releases",
                             return_value=[],
                         ) as related_repair_mock:
-                            with mock.patch.object(self.plugin.repairer, "fallback_track_search") as fallback_mock:
-                                with mock.patch.object(self.plugin.matcher, "find_best_album_match") as find_album_mock:
+                            with mock.patch.object(
+                                self.plugin.repairer, "fallback_track_search",
+                            ) as fallback_mock:
+                                with mock.patch.object(
+                            self.plugin.matcher, "find_best_album_match",
+                        ) as find_album_mock:
                                     self.plugin._process_single_album(
                                         album, dry_run=False, interactive=False,
                                         force=False, provided_album_id=None,
@@ -362,7 +370,9 @@ class FallbackConsensusValidationTests(unittest.TestCase):
         }
 
         with mock.patch.object(self.plugin.matcher, "find_best_album_match", return_value=(None, [])):
-            with mock.patch.object(self.plugin.repairer, "fallback_track_search", return_value=fallback_result):
+            with mock.patch.object(
+                self.plugin.repairer, "fallback_track_search", return_value=fallback_result,
+            ):
                 with mock.patch.object(self.plugin, "clear_all_ids") as clear_mock:
                     self.plugin._process_single_album(
                         album, dry_run=False, interactive=False, force=False, provided_album_id=None,

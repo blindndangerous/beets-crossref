@@ -8,8 +8,8 @@ from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from plugin_test_utils import load_package
 from fakes import FakeAlbum
+from plugin_test_utils import load_package
 
 
 class ExtractSpotifyAlbumIdTests(unittest.TestCase):

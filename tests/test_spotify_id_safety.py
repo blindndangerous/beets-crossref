@@ -5,11 +5,10 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from plugin_test_utils import fresh_plugin, load_package
 from fakes import FakeAlbum, FakeItem
+from plugin_test_utils import fresh_plugin, load_package
 
 from beetsplug.spotify_album_match.helpers import clean_spotify_id
-
 
 VALID_ALBUM_ID = "1A2b3C4d5E6f7G8h9I0jKl"
 VALID_TRACK_ID = "9lKj0I9h8G7f6E5d4C3b2A"

@@ -6,8 +6,8 @@ from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from plugin_test_utils import fresh_plugin, load_package
 from fakes import FakeAlbum, FakeItem
+from plugin_test_utils import fresh_plugin, load_package
 
 
 class GetRepairStrategyTests(unittest.TestCase):

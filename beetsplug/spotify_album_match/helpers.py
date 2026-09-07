@@ -4,6 +4,7 @@ Importable without any beets/spotipy dependencies. Most of these are pure
 functions; `set_artist_id` and `discard_artist_id` are the exceptions, mutating
 the album/item they are handed and logging as they go.
 """
+import contextlib
 import logging
 import re
 
@@ -121,10 +122,8 @@ def discard_artist_id(obj):
     ``'spotify_artist_id' in item`` is also True when only the item's album
     carries the field, and the ``del`` would then raise.
     """
-    try:
+    with contextlib.suppress(KeyError):
         del obj['spotify_artist_id']
-    except KeyError:
-        pass
 
 
 def set_artist_id(obj, spotify_obj, label=''):
@@ -350,7 +349,10 @@ def build_track_search_queries(item_title, item_artist, item_album_title):
     if title_q and artist_full_q and album_q:
         _add_unique_query(queries, seen, f'track:"{title_q}" artist:"{artist_full_q}" album:"{album_q}"')
     if title_stripped_q and title_stripped_q != title_q and artist_full_q and album_q:
-        _add_unique_query(queries, seen, f'track:"{title_stripped_q}" artist:"{artist_full_q}" album:"{album_q}"')
+        _add_unique_query(
+            queries, seen,
+            f'track:"{title_stripped_q}" artist:"{artist_full_q}" album:"{album_q}"',
+        )
     if title_q and primary_artist_q and album_q and primary_artist_q != artist_full_q:
         _add_unique_query(queries, seen, f'track:"{title_q}" artist:"{primary_artist_q}" album:"{album_q}"')
     if (
@@ -360,9 +362,15 @@ def build_track_search_queries(item_title, item_artist, item_album_title):
         and album_q
         and primary_artist_q != artist_full_q
     ):
-        _add_unique_query(queries, seen, f'track:"{title_stripped_q}" artist:"{primary_artist_q}" album:"{album_q}"')
+        _add_unique_query(
+            queries, seen,
+            f'track:"{title_stripped_q}" artist:"{primary_artist_q}" album:"{album_q}"',
+        )
     if title_q and primary_artist_q and album_stripped_q and album_stripped_q != album_q:
-        _add_unique_query(queries, seen, f'track:"{title_q}" artist:"{primary_artist_q}" album:"{album_stripped_q}"')
+        _add_unique_query(
+            queries, seen,
+            f'track:"{title_q}" artist:"{primary_artist_q}" album:"{album_stripped_q}"',
+        )
     if (
         title_stripped_q
         and title_stripped_q != title_q
@@ -370,7 +378,10 @@ def build_track_search_queries(item_title, item_artist, item_album_title):
         and album_stripped_q
         and album_stripped_q != album_q
     ):
-        _add_unique_query(queries, seen, f'track:"{title_stripped_q}" artist:"{primary_artist_q}" album:"{album_stripped_q}"')
+        _add_unique_query(
+            queries, seen,
+            f'track:"{title_stripped_q}" artist:"{primary_artist_q}" album:"{album_stripped_q}"',
+        )
     if title_q and artist_full_q:
         _add_unique_query(queries, seen, f'track:"{title_q}" artist:"{artist_full_q}"')
     if title_q and primary_artist_q and primary_artist_q != artist_full_q:

@@ -6,8 +6,8 @@ from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from plugin_test_utils import fresh_plugin, load_package
 from fakes import FakeAlbum, FakeItem
+from plugin_test_utils import fresh_plugin, load_package
 
 
 class AlbumMatcherSelectionTests(unittest.TestCase):
@@ -76,7 +76,10 @@ class AlbumMatcherSelectionTests(unittest.TestCase):
         local_album = FakeAlbum("Local", "Artist")
         candidates = [
             self._candidate(score=0.60, album={"id": "a1", "name": "A1", "artists": [{"name": "Artist"}]}),
-            self._candidate(score=0.55, album={"id": "a2", "name": "A2", "artists": [{"name": "Artist"}]}, popularity=9),
+            self._candidate(
+                score=0.55, popularity=9,
+                album={"id": "a2", "name": "A2", "artists": [{"name": "Artist"}]},
+            ),
         ]
         selected, supplemental = self.matcher._select_album_candidate(
             local_album, [], candidates, interactive=False,
@@ -87,7 +90,10 @@ class AlbumMatcherSelectionTests(unittest.TestCase):
     def test_interactive_uses_prompter_choice(self):
         local_album = FakeAlbum("Local", "Artist")
         first = self._candidate(score=0.60, album={"id": "a1", "name": "A1", "artists": [{"name": "Artist"}]})
-        second = self._candidate(score=0.55, album={"id": "a2", "name": "A2", "artists": [{"name": "Artist"}]}, popularity=9)
+        second = self._candidate(
+            score=0.55, popularity=9,
+            album={"id": "a2", "name": "A2", "artists": [{"name": "Artist"}]},
+        )
         self.plugin.config.data["related_artist_threshold"] = 0.65
 
         self.matcher.prompter = lambda *args, **kwargs: second

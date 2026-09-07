@@ -7,11 +7,10 @@ from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from plugin_test_utils import fresh_plugin, load_package
 from fakes import FakeAlbum, FakeItem
+from plugin_test_utils import fresh_plugin, load_package
 
 from beetsplug.spotify_album_match.helpers import own_artist_id
-
 
 ALBUM_ID = "albumid000000000000000"
 TRACK_ID_1 = "track10000000000000000"
@@ -167,7 +166,7 @@ class AlbumMatchWritesArtistIdTests(unittest.TestCase):
             for n in (1, 2, 3)
         ]
         track_artist_ids = [ARTIST_TRACK_1, ARTIST_TRACK_2, ARTIST_RELATED]
-        for item, artist_id in zip(items, track_artist_ids):
+        for item, artist_id in zip(items, track_artist_ids, strict=True):
             item["spotify_track_id"] = TRACK_ID_1
             item["spotify_artist_id"] = artist_id
             item.store()
@@ -645,9 +644,13 @@ class BackfillArtistIdTests(unittest.TestCase):
                 for track_id in ids
             }
 
-        with mock.patch.object(self.plugin.client, "get_album", side_effect=get_album),                 mock.patch.object(self.plugin.client, "get_album_tracks",
-                                  side_effect=get_album_tracks),                 mock.patch.object(self.plugin.client, "get_tracks_bulk",
-                                  side_effect=get_tracks_bulk):
+        with mock.patch.object(
+            self.plugin.client, "get_album", side_effect=get_album,
+        ), mock.patch.object(
+            self.plugin.client, "get_album_tracks", side_effect=get_album_tracks,
+        ), mock.patch.object(
+            self.plugin.client, "get_tracks_bulk", side_effect=get_tracks_bulk,
+        ):
             yield calls
 
     def _album_with_ids(self, *, artist_ids=False):

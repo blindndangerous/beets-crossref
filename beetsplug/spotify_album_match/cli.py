@@ -7,7 +7,8 @@ import logging
 import os
 import re
 
-from beets.ui import Subcommand, colorize, print_ as _ui_print
+from beets.ui import Subcommand, colorize
+from beets.ui import print_ as _ui_print
 
 from .helpers import clean_spotify_id
 
