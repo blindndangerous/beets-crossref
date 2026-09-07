@@ -7,6 +7,7 @@ import logging
 import threading
 import time
 
+import requests
 from cachetools import TTLCache
 from spotipy import Spotify
 from spotipy.oauth2 import SpotifyClientCredentials
@@ -240,7 +241,12 @@ class SpotifyClient:
             auth_manager = SpotifyClientCredentials(
                 client_id=client_id, client_secret=client_secret
             )
-            return Spotify(auth_manager=auth_manager, retries=0)
+            # Hand spotipy an already-built session so it installs no urllib3
+            # Retry adapter (spotipy client.py:188). With one, every status in
+            # spotipy's default forcelist (429, 500, 502, 503, 504) is raised
+            # as a synthetic SpotifyException(429) with no headers, which hides
+            # real 5xx errors and the Retry-After value from _retry_request.
+            return Spotify(auth_manager=auth_manager, requests_session=requests.Session())
         except Exception as e:
             log.error(f"Failed to initialize Spotify client: {e}")
             return None
@@ -266,7 +272,7 @@ class SpotifyClient:
                         self._abort_requested = True
                         raise RateLimitAbort(
                             f"Rate limited by Spotify. Aborting run to avoid longer bans "
-                            f"(Retry-After: {retry_after}s)."
+                            f"(waiting {retry_after}s would be required)."
                         )
                     log.warning(f"Rate limited. Retrying in {retry_after} seconds...")
                     self._set_rate_limit(retry_after)
@@ -276,6 +282,14 @@ class SpotifyClient:
                     time.sleep(self.retry_delay * (attempt + 1))
                 else:
                     raise
+            except requests.exceptions.RequestException as e:
+                # Timeouts and connection errors are as transient as a 5xx, and
+                # spotipy lets them through untouched. Back off the same way.
+                if attempt == self.max_retries - 1:
+                    log.error(f"Request failed after {self.max_retries} attempts: {e}")
+                    raise
+                log.warning(f"Spotify request failed ({e}). Retrying...")
+                time.sleep(self.retry_delay * (attempt + 1))
         log.error(f"Request failed after {self.max_retries} retries.")
         raise SpotifyException(http_status=0, code=-1, msg="Max retries exceeded.")
 
