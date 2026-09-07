@@ -3,11 +3,11 @@
 A [beets](https://beets.io/) plugin that matches the albums and tracks in your
 library to Spotify and stores the resulting Spotify IDs on your items.
 
-For each album it searches Spotify (by UPC first, then by title and artist),
-scores the candidates with a weighted fuzzy match, picks a winner, and then maps
-each local track onto a Spotify track. On later runs it verifies the IDs it
-already stored, repairs the ones that drifted (bonus tracks, deluxe editions),
-and clears the ones that are wrong.
+For each album it searches Spotify (by barcode when the album has one, then by
+title and artist), scores the candidates with a weighted fuzzy match, picks a
+winner, and then maps each local track onto a Spotify track. On later runs it
+verifies the IDs it already stored, repairs the ones that drifted (bonus tracks,
+deluxe editions), and clears the ones that are wrong.
 
 ## Fields written
 
@@ -56,6 +56,12 @@ Backfilling only avoids a fresh search for the IDs that are already stored; it i
 substitute for a run. Once it is done the normal match path continues as usual, so an
 album that is not yet fully matched is still searched, matched and repaired in the same
 run.
+
+On a later run a stored album ID is re-checked by title and artist, and each
+stored track ID by its position on the album. ISRCs are compared only where
+Spotify supplies them, which is on track search results: the track list of an
+album comes back as simplified objects with no ISRC. Durations are used when
+scoring a match, not when verifying one.
 
 IDs are validated before they are used or stored. Anything that is not exactly
 22 base62 characters is treated as absent: it is never sent to the Spotify API,
@@ -106,7 +112,7 @@ Options:
 - `-d`, `--dry-run` — show what would change without writing anything
 - `-i`, `--interactive` — prompt you to choose when a match is uncertain
 - `-f`, `--force` — overwrite Spotify IDs that are already stored
-- `-s ID`, `--sid ID` — use a specific Spotify album ID, URI, or open.spotify.com URL for the matched album
+- `-s ID`, `--sid ID` — use a specific Spotify album ID, URI, or open.spotify.com URL for the matched album. This always overwrites the album's stored IDs, with or without `-f`
 - `--resume` — skip albums already recorded as done in the progress file
 - `--progress-file PATH` — path to the progress file (must end in `.json`)
 - `--clear-progress` — delete the progress file and start fresh
@@ -133,7 +139,7 @@ Authentication:
 API and rate limiting:
 
 - `min_request_interval` (`3.0`) — minimum seconds between Spotify API calls
-- `max_retries` (`5`) — retry attempts on transient errors
+- `max_retries` (`5`) — retry attempts on transient errors: HTTP 5xx, timeouts and connection failures
 - `retry_delay` (`5`) — base seconds between retries
 - `stop_on_rate_limit` (`true`) — abort the run on HTTP 429; set `false` to honour `Retry-After` and continue
 - `cache_ttl` (`600`) — seconds to keep Spotify responses in the in-memory cache
@@ -143,7 +149,7 @@ Album matching:
 - `match_threshold` (`0.90`) — minimum composite score for an automatic match
 - `certainty_margin` (`0.15`) — score gap that makes the top candidate a clear winner even below `match_threshold`
 - `max_album_candidates` (`3`) — how many search results are scored in detail
-- `max_album_popularity_checks` (`1`) — how many candidates get a full details fetch for the popularity tie-break (0 disables)
+- `max_album_popularity_checks` (`1`) — how many candidates get a full details fetch so their popularity is known (0 disables). Candidates are ranked by score, and popularity only separates two scores that are exactly equal
 - `related_artist_threshold` (`0.90`) — minimum artist score for a result to count as a related or variant release
 - `min_related_release_artist_score` (`0.85`) — minimum artist score when collecting related releases for bonus tracks
 - `min_preliminary_artist_score` (`0.20`) — hard floor at the quick-filter stage, applied before any track-level API calls
@@ -185,7 +191,17 @@ python -m pytest -q
 ```
 
 The suite stubs `beets`, `spotipy`, and `cachetools`, so it runs without beets
-installed and without touching the network.
+installed and without touching the network. `requests` and `thefuzz` are used
+for real.
+
+Lint with the repository's own rule set:
+
+```bash
+python -m ruff check beetsplug tests
+```
+
+CI runs both on Python 3.10 and 3.13, and additionally imports the package
+against the real dependencies so a broken import cannot pass on stubs alone.
 
 ## License
 

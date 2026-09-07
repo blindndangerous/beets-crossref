@@ -10,11 +10,13 @@ A beets plugin that matches local albums and tracks to Spotify, writing `spotify
 
 ## Stack
 
-- Python 3 (developed against 3.13, `requires-python >= 3.9`)
+- Python 3 (developed against 3.13, `requires-python >= 3.10`, the floor beets 2.2 needs)
 - beets plugin API (`BeetsPlugin`, `Subcommand`); beets >= 2.2 (needs `Album.store(inherit=...)`)
 - Spotify Web API via `spotipy`
 - `cachetools` for TTL caches, `thefuzz` for fuzzy matching (both hard deps)
-- `pytest` for tests; `beets`/`spotipy`/`cachetools` are stubbed in the suite
+- `pytest` for tests; `beets`/`spotipy`/`cachetools` are stubbed in the suite, `requests`
+  and `thefuzz` are real
+- `ruff` for lint, configured in `pyproject.toml`: `python -m ruff check beetsplug tests`
 
 ## Run
 
@@ -104,7 +106,9 @@ All keys go under `spotify_album_match:` in `config.yaml`.
 ### API / Rate Limiting
 
 - `min_request_interval` (default `3.0`) — minimum seconds between Spotify API calls.
-- `max_retries` (default `5`) — retry attempts on transient 5xx errors.
+- `max_retries` (default `5`) — retry attempts on transient errors (5xx, timeouts,
+  connection failures). The client is built with an explicit `requests.Session` so spotipy
+  installs no Retry adapter of its own; without that every 5xx arrives as a header-less 429.
 - `retry_delay` (default `5`) — base seconds between retries.
 - `stop_on_rate_limit` (default `true`) — on HTTP 429, abort the run. Set `false` to wait Retry-After and continue.
 - `cache_ttl` (default `600`) — seconds to cache Spotify API responses in memory.
@@ -114,7 +118,9 @@ All keys go under `spotify_album_match:` in `config.yaml`.
 - `match_threshold` (default `0.90`) — minimum composite score (0–1) for automatic acceptance. Below this needs `--interactive` or is skipped.
 - `certainty_margin` (default `0.15`) — score gap between top two candidates that declares a clear winner even if below `match_threshold`.
 - `max_album_candidates` (default `3`) — max album search results scored in detail.
-- `max_album_popularity_checks` (default `1`) — how many candidates to fetch full details for during popularity tie-break (0 disables).
+- `max_album_popularity_checks` (default `1`) — how many candidates to fetch full details
+  for so popularity is known (0 disables). Sorting is by score first, so popularity only
+  decides an exact tie.
 - `related_artist_threshold` (default `0.90`) — minimum artist fuzzy score for a result to count as a related/variant release rather than filtered.
 - `min_related_release_artist_score` (default `0.85`) — minimum artist score when collecting supplemental related releases for bonus tracks.
 - `min_preliminary_artist_score` (default `0.20`) — hard floor at the quick-filter stage; below this is dropped before track-level API calls.
@@ -166,13 +172,17 @@ Track score weights (sum to 1.0):
 
 ## How Matching Works
 
-1. UPC check — if local album has a UPC, search Spotify by UPC for instant exact match.
+1. Barcode check — if the beets album has a `barcode`, search Spotify by UPC. The hit
+   is accepted only if title*0.6 + artist*0.4 clears `existing_album_validation_threshold`.
 2. Album search — build multiple query variants (full title+artist, stripped title, primary artist) and collect distinct results.
 3. Candidate scoring — weighted composite (see Composite Scoring above).
 4. Selection — accept if `score >= match_threshold` or clear winner by `certainty_margin`. Prefer standard editions over variants when scores close. `--interactive` to pick manually.
 5. Track matching — match each local track to the winning album's tracks via fuzzy title+artist+duration.
 6. Related-release repair — unmatched tracks (e.g. bonus) searched against variant/deluxe editions.
-7. Verification on subsequent runs — validate stored album by title+artist; if wrong, clear and re-search. Otherwise verify track positions/ISRCs/durations and repair only what's off.
+7. Verification on subsequent runs — validate stored album by title+artist; if wrong, clear
+   and re-search. Otherwise verify track positions and repair only what's off. ISRC comparison
+   is written for full track objects; an album's track list is simplified objects with no
+   `external_ids`, so on that path only position is checked. Durations are scored, not verified.
 
 ## Key Design Notes
 

@@ -337,8 +337,8 @@ class AlbumMatcher:
         selected_popularity = selected["popularity"]
         selected_popularity_display = selected_popularity if selected_popularity is not None else "n/a"
         log.info(
-            f"  -> Selected by popularity: '{selected['album']['name']}' "
-            f"(pop {selected_popularity_display}, score {selected['score']:.2f})"
+            f"  -> Selected: '{selected['album']['name']}' "
+            f"(score {selected['score']:.2f}, pop {selected_popularity_display})"
         )
 
         supplemental = self._get_supplemental_candidates(selected, candidates_by_score)

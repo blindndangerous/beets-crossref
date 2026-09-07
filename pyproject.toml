@@ -7,21 +7,29 @@ name = "beets-spotify-album-match"
 version = "0.2.0"
 description = "Beets plugin that matches local albums and tracks to Spotify."
 readme = "README.md"
-requires-python = ">=3.9"
-license = { text = "MIT" }
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "blindndangerous" },
 ]
+
 dependencies = [
     "beets>=2.2",
     "spotipy>=2.22",
     "cachetools>=5",
     "thefuzz>=0.20",
+    "requests>=2.25",
 ]
+
+[project.urls]
+Homepage = "https://github.com/blindndangerous/beets-spotify-album-match"
+Source = "https://github.com/blindndangerous/beets-spotify-album-match"
 
 [project.optional-dependencies]
 test = [
     "pytest>=7",
+    "ruff>=0.6",
 ]
 
 [tool.setuptools.packages.find]
