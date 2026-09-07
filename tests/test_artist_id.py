@@ -285,6 +285,181 @@ class AlbumMatchWritesArtistIdTests(unittest.TestCase):
         self.assertNotIn("spotify_artist_id", item2)
 
 
+class AlbumStoreInheritGuardTests(unittest.TestCase):
+    """One test per album-store site, each failing if `inherit=False` is dropped.
+
+    beets 2.2.0 `Album.store()` defaults to inherit=True and writes every dirty
+    flexible value into each item, cascading deletes the same way
+    (library.py:1494-1527). Every site below is a place where that would either
+    hand an item an ID that is not its own, or delete one that is.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        load_package()
+
+    def setUp(self):
+        self.plugin = fresh_plugin()
+        self.plugin.config.data["min_track_artist_score"] = 0.55
+
+    @staticmethod
+    def _own(item, field):
+        return item._values_flex.get(field)
+
+    def test_main_match_store_leaves_items_without_album_id_or_album_artist(self):
+        """plugin.py: the album store in _process_single_album."""
+        matched = FakeItem("Track 1", artist="Artist", albumartist="Artist",
+                           track=1, disc=1, length=180.0)
+        unmatched = FakeItem("Not On Spotify", artist="Artist", albumartist="Artist",
+                             track=2, disc=1, length=190.0)
+        album = FakeAlbum("Album", "Artist", items=[matched, unmatched])
+        spotify_album = {
+            "id": ALBUM_ID, "name": "Album",
+            "artists": [{"id": ARTIST_ALBUM, "name": "Artist"}],
+        }
+        tracks = [spotify_track(TRACK_ID_1, "Track 1", ARTIST_TRACK_1)]
+
+        with mock.patch.object(
+            self.plugin.matcher, "find_best_album_match", return_value=(spotify_album, []),
+        ), mock.patch.object(
+            self.plugin.client, "get_album_tracks", return_value=tracks,
+        ), mock.patch.object(
+            self.plugin.repairer, "repair_from_related_releases", return_value=[unmatched],
+        ):
+            self.plugin._process_single_album(
+                album, dry_run=False, interactive=False, force=False,
+            )
+
+        self.assertEqual(album.get("spotify_album_id"), ALBUM_ID)
+        self.assertEqual(own_artist_id(album), ARTIST_ALBUM)
+        # The matched track owns its own track artist, not the album's.
+        self.assertEqual(own_artist_id(matched), ARTIST_TRACK_1)
+        # The unmatched track owns nothing at all: no album ID copy, and no
+        # artist ID with no track ID beside it.
+        self.assertIsNone(own_artist_id(unmatched))
+        self.assertIsNone(self._own(unmatched, "spotify_track_id"))
+        for item in (matched, unmatched):
+            self.assertIsNone(self._own(item, "spotify_album_id"))
+
+    def test_provided_album_id_store_leaves_items_without_album_id_or_album_artist(self):
+        """plugin.py: the album store in _apply_provided_album_id (--sid)."""
+        matched = FakeItem("Track 1", artist="Artist", albumartist="Artist",
+                           track=1, disc=1, length=180.0)
+        unmatched = FakeItem("Not On Spotify", artist="Artist", albumartist="Artist",
+                             track=2, disc=1, length=190.0)
+        album = FakeAlbum("Album", "Artist", items=[matched, unmatched])
+        spotify_album = {
+            "id": ALBUM_ID, "name": "Album",
+            "artists": [{"id": ARTIST_ALBUM, "name": "Artist"}],
+        }
+        tracks = [spotify_track(TRACK_ID_1, "Track 1", ARTIST_TRACK_1)]
+        candidate = {
+            "album": spotify_album, "tracks": tracks, "score": 0.95,
+            "track_count": 1, "is_variant": False, "popularity": 10,
+            "base_title_score": 1.0, "artist_score": 1.0,
+        }
+
+        with mock.patch.object(
+            self.plugin.matcher, "build_candidate_from_album_id", return_value=candidate,
+        ), mock.patch.object(
+            self.plugin.client, "get_album_tracks", return_value=tracks,
+        ):
+            self.plugin._apply_provided_album_id(album, ALBUM_ID, dry_run=False, force=True)
+
+        self.assertEqual(own_artist_id(matched), ARTIST_TRACK_1)
+        self.assertIsNone(own_artist_id(unmatched))
+        for item in (matched, unmatched):
+            self.assertIsNone(self._own(item, "spotify_album_id"))
+
+    def test_backfill_album_store_keeps_an_item_artist_id_that_was_already_right(self):
+        """plugin.py: the album store in _backfill_artist_ids.
+
+        The album's artist ID is written before the items are filled, and an
+        item that already had its own artist ID is not in the pending list --
+        so inheritance would overwrite a value the backfill deliberately left
+        alone.
+        """
+        already_filled = FakeItem("Track 1", artist="Artist", albumartist="Artist",
+                                  track=1, disc=1)
+        needs_filling = FakeItem("Track 2", artist="Artist", albumartist="Artist",
+                                 track=2, disc=1)
+        already_filled["spotify_track_id"] = TRACK_ID_1
+        already_filled["spotify_artist_id"] = ARTIST_TRACK_1
+        needs_filling["spotify_track_id"] = TRACK_ID_2
+        album = FakeAlbum("Album", "Artist", items=[already_filled, needs_filling])
+        album["spotify_album_id"] = ALBUM_ID
+        album.store(inherit=False)
+
+        spotify_album = {
+            "id": ALBUM_ID, "name": "Album",
+            "artists": [{"id": ARTIST_ALBUM, "name": "Artist"}],
+        }
+        tracks = [
+            spotify_track(TRACK_ID_1, "Track 1", ARTIST_TRACK_1, track_number=1),
+            spotify_track(TRACK_ID_2, "Track 2", ARTIST_TRACK_2, track_number=2),
+        ]
+
+        with mock.patch.object(
+            self.plugin.client, "get_album", return_value=spotify_album,
+        ), mock.patch.object(
+            self.plugin.client, "get_album_tracks", return_value=tracks,
+        ):
+            self.plugin._backfill_artist_ids(album, dry_run=False, album_id=ALBUM_ID)
+
+        self.assertEqual(own_artist_id(album), ARTIST_ALBUM)
+        self.assertEqual(own_artist_id(already_filled), ARTIST_TRACK_1)
+        self.assertEqual(own_artist_id(needs_filling), ARTIST_TRACK_2)
+        for item in (already_filled, needs_filling):
+            self.assertIsNone(self._own(item, "spotify_album_id"))
+
+    def test_clear_all_ids_writes_each_item_once_and_leaves_untagged_items_alone(self):
+        """plugin.py: the album store in clear_all_ids.
+
+        The album's deleted IDs must not cascade: an item is written by the
+        item loop below, once, and an item with nothing stored is not written
+        at all.
+        """
+        tagged = FakeItem("Track 1", artist="Artist", albumartist="Artist", track=1, disc=1)
+        tagged["spotify_track_id"] = TRACK_ID_1
+        tagged["spotify_artist_id"] = ARTIST_TRACK_1
+        untagged = FakeItem("Track 2", artist="Artist", albumartist="Artist", track=2, disc=1)
+        album = FakeAlbum("Album", "Artist", items=[tagged, untagged])
+        album["spotify_album_id"] = ALBUM_ID
+        album["spotify_artist_id"] = ARTIST_ALBUM
+        album.store(inherit=False)
+
+        self.plugin.clear_all_ids(album, dry_run=False)
+
+        self.assertNotIn("spotify_album_id", album._values_flex)
+        self.assertIsNone(self._own(tagged, "spotify_track_id"))
+        self.assertIsNone(own_artist_id(tagged))
+        self.assertEqual(tagged.store_calls, 1)
+        self.assertEqual(untagged.store_calls, 0)
+
+    def test_clearing_a_malformed_album_artist_id_keeps_item_artist_ids(self):
+        """plugin.py: the album store in _clear_malformed_artist_id.
+
+        Deleting the album's own bad artist ID would otherwise delete the
+        artist ID from every item, leaving their still-valid track IDs behind
+        with nothing beside them.
+        """
+        item = FakeItem("Track 1", artist="Artist", albumartist="Artist", track=1, disc=1)
+        item["spotify_track_id"] = TRACK_ID_1
+        item["spotify_artist_id"] = ARTIST_TRACK_1
+        album = FakeAlbum("Album", "Artist", items=[item])
+        album["spotify_album_id"] = ALBUM_ID
+        album["spotify_artist_id"] = "not-a-spotify-id"
+        album.store(inherit=False)
+
+        album_id = self.plugin._clear_malformed_stored_ids(album, dry_run=False)
+
+        self.assertEqual(album_id, ALBUM_ID)
+        self.assertNotIn("spotify_artist_id", album._values_flex)
+        self.assertEqual(item.get("spotify_track_id"), TRACK_ID_1)
+        self.assertEqual(own_artist_id(item), ARTIST_TRACK_1)
+        self.assertEqual(item.store_calls, 0)
+
+
 class StaleArtistIdTests(unittest.TestCase):
     """A stored artist ID must always belong to the currently stored album/track ID."""
 

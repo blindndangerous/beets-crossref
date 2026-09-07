@@ -47,14 +47,16 @@ class AlbumMatcher:
     def find_best_album_match(self, local_album, interactive):
         """Return (selected_album_dict_or_None, supplemental_candidates).
 
-        Tries UPC first, then text-search candidates. Selection considers
-        title/artist scores, popularity, and variant-vs-standard preference.
+        Tries the barcode when `use_upc_lookup` is on, then text-search
+        candidates. Selection considers title/artist scores, popularity, and
+        variant-vs-standard preference.
         """
-        barcode = album_barcode(local_album)
-        if barcode:
-            upc_match = self._search_by_upc(local_album, barcode)
-            if upc_match:
-                return upc_match, []
+        if self.config['use_upc_lookup'].get(bool):
+            barcode = album_barcode(local_album)
+            if barcode:
+                upc_match = self._search_by_upc(local_album, barcode)
+                if upc_match:
+                    return upc_match, []
 
         candidates_by_id = self._search_album_candidates(local_album)
         if not candidates_by_id:
@@ -71,9 +73,13 @@ class AlbumMatcher:
     def _search_by_upc(self, local_album, barcode):
         """Return the Spotify album for a barcode, or None.
 
-        The hit is checked against the local title and artist before it is
-        trusted: a barcode search returns exactly one release and a mistagged
-        barcode would otherwise be accepted with no evidence at all.
+        Experimental, off by default (`use_upc_lookup`). The hit is checked
+        against the local title and artist before it is trusted: a barcode
+        search returns exactly one release and a mistagged barcode would
+        otherwise be accepted with no evidence at all. That check is not
+        airtight: `fuzzy_title_score` uses partial_ratio, so a superset title
+        such as "Greatest Hits" scores 1.0 against "Hits", and an album with an
+        empty albumartist scores 0 on artist and can never clear the gate.
         """
         query = f'upc:{barcode}'
         log.info(f"  -> Searching Spotify by UPC: {query}")

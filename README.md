@@ -3,8 +3,8 @@
 A [beets](https://beets.io/) plugin that matches the albums and tracks in your
 library to Spotify and stores the resulting Spotify IDs on your items.
 
-For each album it searches Spotify (by barcode when the album has one, then by
-title and artist), scores the candidates with a weighted fuzzy match, picks a
+For each album it searches Spotify (by title and artist, or by barcode first if
+you turn on the experimental `use_upc_lookup`), scores the candidates with a weighted fuzzy match, picks a
 winner, and then maps each local track onto a Spotify track. On later runs it
 verifies the IDs it already stored, repairs the ones that drifted (bonus tracks,
 deluxe editions), and clears the ones that are wrong.
@@ -36,6 +36,11 @@ touches the album. This is why beets 2.2 or newer is required: earlier releases 
 `inherit` argument. Item-level queries such as
 `beet ls spotify_album_id:4aawyAB9vmqN3uQ7FjRGTy` still work, because beets lets an item
 read its album's value for a field the item does not have.
+
+If your library was matched by an earlier version of this plugin, some tracks already own
+a copy of their album's artist ID, written before this was fixed. Nothing heals those
+automatically: the plugin cannot tell a copied value from one a track earned. Run once
+with `-f` to re-match and rewrite them.
 
 ## Backfilling artist IDs
 
@@ -154,6 +159,12 @@ Album matching:
 - `min_related_release_artist_score` (`0.85`) — minimum artist score when collecting related releases for bonus tracks
 - `min_preliminary_artist_score` (`0.20`) — hard floor at the quick-filter stage, applied before any track-level API calls
 - `max_track_search_queries` (`3`) — maximum query variants tried per track (0 = unlimited)
+- `use_upc_lookup` (`false`) — **experimental.** Search by the album's `barcode` field before
+  searching by title and artist. The single hit is accepted only if it scores at least
+  `existing_album_validation_threshold` on title and artist, but that gate is weaker than it
+  looks: title scoring uses a partial ratio, so a superset title such as "Greatest Hits"
+  scores a perfect match against "Hits", and an album with an empty `albumartist` scores 0
+  on artist and can never pass. Try it with `--dry-run` before trusting it
 
 Track matching:
 

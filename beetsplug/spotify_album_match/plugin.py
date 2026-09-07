@@ -61,6 +61,7 @@ CONFIG_DEFAULTS = {
     'duration_mismatch_penalty': 0.10,            # penalty subtracted from score on large diff
     'existing_album_validation_threshold': 0.90,  # min score for stored album to pass identity check
     'use_track_fallback': False,                  # enable track-level search when no album match
+    'use_upc_lookup': False,                      # experimental: search by the album's barcode first
     'max_track_search_queries': 3,                # max query variants per track (0 = unlimited)
 }
 

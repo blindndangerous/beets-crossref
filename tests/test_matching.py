@@ -34,8 +34,24 @@ class AlbumMatcherSelectionTests(unittest.TestCase):
         base.update(overrides)
         return base
 
+    def test_upc_lookup_is_skipped_when_the_flag_is_off(self):
+        """use_upc_lookup defaults to False: the barcode is not consulted at all."""
+        local_album = FakeAlbum("Album", "Artist", barcode="0123456789012")
+
+        with mock.patch.object(self.matcher.client, "search") as search:
+            with mock.patch.object(self.matcher, "_search_album_candidates",
+                                   return_value={}) as text_search:
+                selected, _ = self.matcher.find_best_album_match(
+                    local_album, interactive=False,
+                )
+
+        self.assertIsNone(selected)
+        search.assert_not_called()
+        text_search.assert_called_once()
+
     def test_upc_search_reads_the_beets_barcode_field(self):
         """beets albums carry 'barcode', never 'upc' (beets 2.2.0 library.py:1188)."""
+        self.plugin.config.data["use_upc_lookup"] = True
         local_album = FakeAlbum("Album", "Artist", barcode="0123456789012")
         sp_album = {
             "id": "b" * 22, "name": "Album",
@@ -55,6 +71,7 @@ class AlbumMatcherSelectionTests(unittest.TestCase):
 
     def test_upc_hit_that_does_not_match_title_and_artist_is_rejected(self):
         """A mistagged barcode must not be accepted without a sanity check."""
+        self.plugin.config.data["use_upc_lookup"] = True
         local_album = FakeAlbum("Album", "Artist", barcode="0123456789012")
         sp_album = {
             "id": "b" * 22, "name": "A Completely Different Record",

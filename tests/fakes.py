@@ -120,10 +120,13 @@ class FakeAlbum(_FakeModel):
     def store(self, fields=None, inherit=True):
         """Store the album, pushing dirty flexible values into its items.
 
-        Mirrors beets 2.2.0 `Album.store()` (library.py:1494-1527): with
-        `inherit` left at its default True, every flexible key dirtied since
-        the last store is written into each item (and each key deleted from
-        the album is deleted from each item), then each item is stored.
+        Models the flexible-field half of beets 2.2.0 `Album.store()`
+        (library.py:1494-1527): with `inherit` left at its default True, every
+        flexible key dirtied since the last store is written into each item
+        (and each key deleted from the album is deleted from each item), then
+        each item is stored. beets also inherits dirty *fixed* attributes that
+        albums and items share (library.py:1509-1516, `key in self.item_keys`);
+        this plugin never dirties one, so that half is not modelled.
         """
         track_updates = {}
         track_deletes = set()

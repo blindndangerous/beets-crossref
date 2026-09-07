@@ -249,8 +249,8 @@ class ProcessSingleAlbumTests(unittest.TestCase):
                                 self.plugin.repairer, "fallback_track_search",
                             ) as fallback_mock:
                                 with mock.patch.object(
-                            self.plugin.matcher, "find_best_album_match",
-                        ) as find_album_mock:
+                                    self.plugin.matcher, "find_best_album_match",
+                                ) as find_album_mock:
                                     self.plugin._process_single_album(
                                         album, dry_run=False, interactive=False,
                                         force=False, provided_album_id=None,

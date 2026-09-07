@@ -161,6 +161,7 @@ Track score weights (sum to 1.0):
 ### Track-Level Fallback (opt-in)
 
 - `use_track_fallback` (default `false`) — fall back to per-track search when no album match. Off by default to avoid false positives.
+- `use_upc_lookup` (default `false`) — experimental barcode lookup before the text search.
 - `min_no_album_track_artist_score` (default `0.75`) — stricter artist floor during fallback (no album context).
 - `fallback_album_validation_threshold` (default `0.90`) — minimum score for the consensus album from fallback to be accepted.
 - `fallback_consensus_ratio` (default `0.6`) — fraction of matched tracks needed to promote a new album_id.
@@ -172,8 +173,9 @@ Track score weights (sum to 1.0):
 
 ## How Matching Works
 
-1. Barcode check — if the beets album has a `barcode`, search Spotify by UPC. The hit
-   is accepted only if title*0.6 + artist*0.4 clears `existing_album_validation_threshold`.
+1. Barcode check — only when `use_upc_lookup` is on (default off, experimental). Searches
+   Spotify by UPC; the hit is accepted only if title*0.6 + artist*0.4 clears
+   `existing_album_validation_threshold`. Caveats in README.
 2. Album search — build multiple query variants (full title+artist, stripped title, primary artist) and collect distinct results.
 3. Candidate scoring — weighted composite (see Composite Scoring above).
 4. Selection — accept if `score >= match_threshold` or clear winner by `certainty_margin`. Prefer standard editions over variants when scores close. `--interactive` to pick manually.

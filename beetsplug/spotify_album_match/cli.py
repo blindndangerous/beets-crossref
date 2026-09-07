@@ -237,7 +237,7 @@ class InteractivePrompter:
             except ValueError:
                 _ui_print(colorize(
                     'red',
-                    f"'{choice}' is not a valid number, 's', or 'i'. Please try again.",
+                    f"'{choice}' is not a valid number, 's', 'b', or 'i'. Please try again.",
                 ))
 
     @staticmethod
