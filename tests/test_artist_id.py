@@ -160,6 +160,77 @@ class AlbumMatchWritesArtistIdTests(unittest.TestCase):
         self.assertEqual(album.get("spotify_album_id"), RELATED_ALBUM_ID)
         self.assertEqual(album.get("spotify_artist_id"), ARTIST_RELATED)
 
+    def test_album_store_never_overwrites_per_track_artist_ids(self):
+        """A compilation keeps each track's own artist ID when the album is stored.
+
+        Real beets `Album.store()` defaults to `inherit=True` and pushes every
+        dirty flexible value into each item (beets 2.2.0 library.py:1494-1527),
+        so storing the album's `spotify_artist_id` would replace all three
+        tracks' own artist IDs with the compilation's.
+        """
+        items = [
+            FakeItem(f"Track {n}", artist="Artist", albumartist="Various Artists",
+                     track=n, disc=1)
+            for n in (1, 2, 3)
+        ]
+        track_artist_ids = [ARTIST_TRACK_1, ARTIST_TRACK_2, ARTIST_RELATED]
+        for item, artist_id in zip(items, track_artist_ids):
+            item["spotify_track_id"] = TRACK_ID_1
+            item["spotify_artist_id"] = artist_id
+            item.store()
+        album = FakeAlbum("Compilation", "Various Artists", items=items)
+        album["spotify_album_id"] = ALBUM_ID
+        album["spotify_artist_id"] = ARTIST_ALBUM
+
+        related_candidates = [{
+            "album": {
+                "id": RELATED_ALBUM_ID, "name": "Compilation (Deluxe)",
+                "artists": [{"id": ARTIST_RELATED, "name": "Various Artists"}],
+            },
+            "tracks": [spotify_track(TRACK_ID_2, "Track 1", ARTIST_TRACK_2)],
+            "score": 0.9, "popularity": 20,
+            "artist_score": 1.0, "base_title_score": 0.95,
+        }]
+
+        with mock.patch.object(self.plugin.matcher, "match_items_to_tracks",
+                               return_value=[]):
+            self.plugin.repairer.repair_from_related_releases(
+                album, list(items), dry_run=False,
+                related_candidates=related_candidates,
+            )
+
+        self.assertEqual(album.get("spotify_album_id"), RELATED_ALBUM_ID)
+        self.assertEqual(
+            [own_artist_id(item) for item in items], track_artist_ids,
+        )
+        # Items must not acquire the album's ID as a value of their own either.
+        self.assertEqual(
+            [item._values_flex.get("spotify_album_id") for item in items],
+            [None, None, None],
+        )
+
+    def test_album_id_clearing_does_not_delete_item_artist_ids(self):
+        """Clearing the album's IDs leaves each track's own artist ID alone.
+
+        beets cascades *deletes* as well as writes when `inherit` is on
+        (library.py:1520-1527), which would strip `spotify_artist_id` from
+        every item while leaving their still-valid track IDs behind.
+        """
+        item = FakeItem("Track 1", artist="Artist", albumartist="Artist", track=1, disc=1)
+        item["spotify_track_id"] = TRACK_ID_1
+        item["spotify_artist_id"] = ARTIST_TRACK_1
+        item.store()
+        album = FakeAlbum("Album", "Artist", items=[item])
+        album["spotify_album_id"] = "not-a-spotify-id"
+        album["spotify_artist_id"] = ARTIST_ALBUM
+        album.store(inherit=False)
+
+        self.plugin._clear_malformed_stored_ids(album, dry_run=False)
+
+        self.assertNotIn("spotify_album_id", album._values_flex)
+        self.assertEqual(item.get("spotify_track_id"), TRACK_ID_1)
+        self.assertEqual(own_artist_id(item), ARTIST_TRACK_1)
+
     def test_fallback_track_search_stores_item_and_album_artist_ids(self):
         item = FakeItem("Song A", artist="Artist", albumartist="Artist")
         album = FakeAlbum("Album", "Artist", items=[item])

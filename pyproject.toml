@@ -13,7 +13,7 @@ authors = [
     { name = "blindndangerous" },
 ]
 dependencies = [
-    "beets>=1.6",
+    "beets>=2.2",
     "spotipy>=2.22",
     "cachetools>=5",
     "thefuzz>=0.20",

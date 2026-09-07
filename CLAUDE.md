@@ -11,7 +11,7 @@ A beets plugin that matches local albums and tracks to Spotify, writing `spotify
 ## Stack
 
 - Python 3 (developed against 3.13, `requires-python >= 3.9`)
-- beets plugin API (`BeetsPlugin`, `Subcommand`)
+- beets plugin API (`BeetsPlugin`, `Subcommand`); beets >= 2.2 (needs `Album.store(inherit=...)`)
 - Spotify Web API via `spotipy`
 - `cachetools` for TTL caches, `thefuzz` for fuzzy matching (both hard deps)
 - `pytest` for tests; `beets`/`spotipy`/`cachetools` are stubbed in the suite
@@ -196,6 +196,11 @@ Track score weights (sum to 1.0):
   keep a blank attribute around that later looks like a stored ID.
 - `SpotifyAlbumMatchPlugin._clear_malformed_stored_ids` runs at the top of every album's
   processing, deleting blank/malformed stored IDs before they reach Spotify.
+- Store albums with `album.store(inherit=False)`. A plain `album.store()` pushes every
+  flexible field the album just changed into each of its items and cascades deletions
+  (beets 2.2.0 `library.py:1494-1527`), which would overwrite each track's own
+  `spotify_artist_id` with the album's. Items are stored with plain `item.store()` --
+  `Item.store()` has no `inherit` parameter.
 - `spotify_artist_id` is registered on albums AND items, and beets makes an item read
   its album's value for a field the item does not have (`get`, `in`, `[]` — but not
   `del`). So never test an item's artist ID with `item.get(...)` or `in`: use

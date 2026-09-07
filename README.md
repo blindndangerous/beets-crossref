@@ -28,6 +28,15 @@ deleted whenever that ID is cleared. If Spotify returns no usable primary artist
 album or track ID is still stored and any artist ID already on that album or track is
 removed, so a stored artist ID always belongs to the album or track ID sitting beside it.
 
+Holding that invariant needs one thing from beets: by default `album.store()` copies
+every flexible field the album just changed into each of its items, and cascades
+deletions the same way, which would give every track the album's artist ID. The plugin
+therefore stores albums with `album.store(inherit=False)`, so an album write only ever
+touches the album. This is why beets 2.2 or newer is required: earlier releases have no
+`inherit` argument. Item-level queries such as
+`beet ls spotify_album_id:4aawyAB9vmqN3uQ7FjRGTy` still work, because beets lets an item
+read its album's value for a field the item does not have.
+
 ## Backfilling artist IDs
 
 Albums matched before `spotify_artist_id` existed are filled in without being
@@ -54,6 +63,8 @@ and a stored value that fails validation is deleted from the library rather than
 left behind as an empty string.
 
 ## Install
+
+Requires beets 2.2 or newer.
 
 From a checkout:
 

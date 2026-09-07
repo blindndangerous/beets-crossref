@@ -225,7 +225,10 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
         if not dry_run:
             album['spotify_album_id'] = spotify_album['id']
             set_artist_id(album, spotify_album, label=album.album)
-            album.store()
+            # inherit=False: a plain album.store() copies the album's flexible
+            # fields into every item and cascades deletes, which would replace
+            # each track's own spotify_artist_id with the album's.
+            album.store(inherit=False)
 
         unmatched_items = self._apply_authoritative_album_mapping(album, spotify_album['id'], dry_run)
         if unmatched_items:
@@ -321,7 +324,7 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
         if not dry_run:
             album['spotify_album_id'] = spotify_album.get('id', album_id)
             set_artist_id(album, spotify_album, label=album.album)
-            album.store()
+            album.store(inherit=False)
 
         effective_album_id = spotify_album.get('id', album_id)
         unmatched_items = self._apply_authoritative_album_mapping(album, effective_album_id, dry_run)
@@ -380,7 +383,7 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
                 album_filled = True
                 if not dry_run:
                     album['spotify_artist_id'] = artist_id
-                    album.store()
+                    album.store(inherit=False)
 
         tracks_filled = 0
         if pending_items:
@@ -439,7 +442,7 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
             if not dry_run:
                 del album['spotify_album_id']
                 discard_artist_id(album)
-                album.store()
+                album.store(inherit=False)
         for item in album.items():
             if 'spotify_track_id' in item:
                 log.info(f"  -> {log_prefix}Clearing Spotify track ID for: '{item.title}'")
@@ -495,8 +498,8 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
                 if not dry_run:
                     del album['spotify_album_id']
                     discard_artist_id(album)
-                    album.store()
-        self._clear_malformed_artist_id(album, album.album, dry_run)
+                    album.store(inherit=False)
+        self._clear_malformed_artist_id(album, album.album, dry_run, is_album=True)
 
         for item in album.items():
             if 'spotify_track_id' in item:
@@ -512,11 +515,12 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
                         item.store()
             self._clear_malformed_artist_id(item, item.title, dry_run)
 
-    def _clear_malformed_artist_id(self, obj, label, dry_run):
+    def _clear_malformed_artist_id(self, obj, label, dry_run, *, is_album=False):
         """Remove a blank or malformed stored artist ID left on its own.
 
         Reads the object's OWN value: an item that only sees its album's artist
-        ID through the fallback has nothing of its own to clear.
+        ID through the fallback has nothing of its own to clear. `is_album`
+        selects the album store signature, which must not inherit.
         """
         artist_id = own_artist_id(obj)
         if artist_id is None or clean_spotify_id(artist_id):
@@ -527,7 +531,10 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
         )
         if not dry_run:
             del obj['spotify_artist_id']
-            obj.store()
+            if is_album:
+                obj.store(inherit=False)
+            else:
+                obj.store()
 
     @staticmethod
     def _clear_progress_file(progress_file):

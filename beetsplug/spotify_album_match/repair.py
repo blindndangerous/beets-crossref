@@ -259,7 +259,10 @@ class AlbumRepairer:
                     if not dry_run:
                         album['spotify_album_id'] = release_id
                         set_artist_id(album, release, label=album.album)
-                        album.store()
+                        # inherit=False: the items were matched (and given their
+                        # own artist IDs) just above; an inheriting store would
+                        # overwrite every one of them with this release's artist.
+                        album.store(inherit=False)
                 # Already matched in match_items_to_tracks above; do NOT re-run authoritative
                 # mapping over the whole album — that would overwrite already-correct IDs
                 # from the primary release.
@@ -340,7 +343,7 @@ class AlbumRepairer:
                 if not dry_run:
                     album['spotify_album_id'] = best_album_id
                     set_artist_id(album, consensus_album_obj, label=album.album)
-                    album.store()
+                    album.store(inherit=False)
                 else:
                     new_album_id = best_album_id
 
