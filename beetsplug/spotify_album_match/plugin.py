@@ -185,13 +185,20 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
                 log.error(f"Error processing album '{album.album}': {exc}")
 
     def _process_single_album(self, album, dry_run, interactive, force, provided_album_id=None):
-        self._clear_malformed_stored_ids(album, dry_run)
+        # Counted from here so the "API calls for album" figure includes the
+        # backfill lookups below.
+        self.client.reset_call_count()
+        # The returned ID is the one to use from here on: under --dry-run a
+        # malformed stored ID is reported but not deleted, and passing it on
+        # would make the dry run log a clear-and-re-search the real run does
+        # not perform.
+        existing_album_id = self._clear_malformed_stored_ids(album, dry_run)
         if provided_album_id:
             self._apply_provided_album_id(album, provided_album_id, dry_run, force)
             return
 
         if self._needs_artist_id_backfill(album):
-            self._backfill_artist_ids(album, dry_run)
+            self._backfill_artist_ids(album, dry_run, album_id=existing_album_id)
 
         verify_existing = self.config['verify_existing_ids'].get(bool)
         if not force and not verify_existing and all(item.get('spotify_track_id') for item in album.items()):
@@ -200,9 +207,6 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
 
         log_prefix = self._log_prefix(dry_run)
         log.info(f"Processing album: {album.albumartist} - {album.album}")
-        self.client.reset_call_count()
-
-        existing_album_id = album.get('spotify_album_id')
         if not force and verify_existing and existing_album_id:
             if self.repairer.try_verify_existing_album_id(album, existing_album_id, dry_run, log_prefix):
                 log.debug(f"API calls for album '{album.album}': {self.client.api_call_count}")
@@ -360,13 +364,14 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
             _needs_own_artist_id(item, 'spotify_track_id') for item in album.items()
         )
 
-    def _backfill_artist_ids(self, album, dry_run):
+    def _backfill_artist_ids(self, album, dry_run, album_id=None):
         """Fill missing artist IDs from the already-stored album/track IDs.
 
         Never re-matches: the stored IDs are trusted and only looked up.
         """
         log_prefix = self._log_prefix(dry_run)
-        album_id = clean_spotify_id(album.get('spotify_album_id'))
+        if album_id is None:
+            album_id = clean_spotify_id(album.get('spotify_album_id'))
 
         # Pick the pending items BEFORE the album's artist ID is stored: once it
         # is, every item without its own reads the album's through the fallback
@@ -486,7 +491,13 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
         return album_id
 
     def _clear_malformed_stored_ids(self, album, dry_run):
-        """Remove blank or malformed stored IDs before they reach Spotify APIs."""
+        """Remove blank or malformed stored IDs before they reach Spotify APIs.
+
+        Returns the album's usable Spotify album ID, or None when there is
+        none. Under --dry-run a malformed ID is left in the library but the
+        return value is still None, so the rest of the run behaves as the real
+        run would.
+        """
         log_prefix = self._log_prefix(dry_run)
         if 'spotify_album_id' in album:
             album_id = album.get('spotify_album_id')
@@ -514,6 +525,8 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
                         discard_artist_id(item)
                         item.store()
             self._clear_malformed_artist_id(item, item.title, dry_run)
+
+        return clean_spotify_id(album.get('spotify_album_id'))
 
     def _clear_malformed_artist_id(self, obj, label, dry_run, *, is_album=False):
         """Remove a blank or malformed stored artist ID left on its own.

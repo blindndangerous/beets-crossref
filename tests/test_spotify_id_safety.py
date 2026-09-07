@@ -119,6 +119,30 @@ class SpotifyIdSafetyTest(unittest.TestCase):
         self.assertEqual(album.store_calls, 1)
         self.assertEqual(item.store_calls, 1)
 
+    def test_malformed_album_id_is_not_returned_for_use_under_dry_run(self):
+        """Dry-run leaves the bad ID in the library but must not act on it.
+
+        Otherwise the dry run sends the malformed ID to verification, reports
+        it unverifiable, and logs a clear-and-re-search the real run (which
+        deletes the ID first and searches directly) would never perform.
+        """
+        album = FakeAlbum("Album", "Artist", items=[FakeItem("track")])
+        album["spotify_album_id"] = "bad"
+        album.store(inherit=False)
+
+        album_id = self.plugin._clear_malformed_stored_ids(album, dry_run=True)
+
+        self.assertIsNone(album_id)
+        self.assertEqual(album.get("spotify_album_id"), "bad")
+        self.assertEqual(album.store_calls, 1)
+
+    def test_bulk_track_lookup_reuses_the_details_cache(self):
+        first = self.client.get_tracks_bulk([VALID_TRACK_ID])
+        second = self.client.get_tracks_bulk([VALID_TRACK_ID])
+
+        self.assertEqual(first, second)
+        self.assertEqual(self.client._spotify.tracks_calls, [[VALID_TRACK_ID]])
+
 
 if __name__ == "__main__":
     unittest.main()

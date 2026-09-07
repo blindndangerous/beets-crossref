@@ -105,11 +105,13 @@ def primary_artist_id(spotify_obj):
 
 
 def own_artist_id(obj):
-    """Artist ID stored on this object itself (beets Items fall back to their album)."""
-    values_flex = getattr(obj, '_values_flex', None)
-    if values_flex is not None:
-        return values_flex.get('spotify_artist_id')
-    return obj.get('spotify_artist_id')
+    """Artist ID stored on this object itself (beets Items fall back to their album).
+
+    Reads _values_flex directly: every beets Model has it, and there is no
+    safe fallback -- ``obj.get`` on an Item would return the album's value,
+    which is exactly what this helper exists to avoid.
+    """
+    return obj._values_flex.get('spotify_artist_id')
 
 
 def discard_artist_id(obj):

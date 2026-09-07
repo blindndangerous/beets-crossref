@@ -24,7 +24,11 @@ class RateLimitAbort(Exception):
 
 
 class SpotifyClient:
-    """Wraps spotipy.Spotify with caching, rate-limiting, and retry logic."""
+    """Wraps spotipy.Spotify with caching, rate-limiting, and retry logic.
+
+    The cache and request locks are held for a possible future concurrent
+    caller; every caller today is single-threaded.
+    """
 
     def __init__(
         self,
@@ -184,7 +188,11 @@ class SpotifyClient:
         return details_by_id
 
     def get_tracks_bulk(self, track_ids):
-        """Return a {track_id: track_dict} map for many IDs (batched 50 at a time)."""
+        """Return a {track_id: track_dict} map for many IDs (batched 50 at a time).
+
+        Checks _track_details_cache first, the same way get_albums_bulk does,
+        so IDs already fetched earlier in a run cost no API call.
+        """
         if not track_ids:
             return {}
         unique_ids = list(
@@ -195,8 +203,19 @@ class SpotifyClient:
         )
 
         details_by_id = {}
-        for i in range(0, len(unique_ids), 50):
-            chunk = unique_ids[i:i + 50]
+        uncached_ids = []
+        with self._cache_lock:
+            for track_id in unique_ids:
+                cached = self._track_details_cache.get(track_id)
+                if cached is not None:
+                    details_by_id[track_id] = cached
+                else:
+                    uncached_ids.append(track_id)
+
+        if uncached_ids:
+            log.debug(f"Bulk-fetching {len(uncached_ids)} track(s) not in cache.")
+        for i in range(0, len(uncached_ids), 50):
+            chunk = uncached_ids[i:i + 50]
             try:
                 results = self._retry_request(self._spotify.tracks, chunk)
             except SpotifyException as e:

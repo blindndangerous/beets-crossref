@@ -66,6 +66,29 @@ class ProcessSingleAlbumTests(unittest.TestCase):
         self.assertTrue(match_mock.called)
         fallback_mock.assert_not_called()
 
+    def test_dry_run_does_not_verify_a_malformed_stored_album_id(self):
+        """The real run deletes the bad ID and searches; the dry run must agree.
+
+        Dry-run cannot delete the field, so the malformed value is still in the
+        library when processing continues -- it just must not be used.
+        """
+        album = FakeAlbum(
+            "Local Album", "Local Artist",
+            items=[FakeItem("Track 1", artist="Local Artist", albumartist="Local Artist",
+                            track=1, disc=1)],
+        )
+        album["spotify_album_id"] = "not-a-spotify-id"
+        album.store(inherit=False)
+
+        with mock.patch.object(self.plugin.repairer, "try_verify_existing_album_id") as verify:
+            with mock.patch.object(self.plugin.matcher, "find_best_album_match",
+                                   return_value=(None, [])):
+                self.plugin._process_single_album(
+                    album, dry_run=True, interactive=False, force=False, provided_album_id=None,
+                )
+
+        verify.assert_not_called()
+
     def test_falls_back_when_no_album_match(self):
         item = FakeItem("Track 1", artist="Local Artist", albumartist="Local Artist", track=1, disc=1)
         album = FakeAlbum("Local Album", "Local Artist", items=[item])
