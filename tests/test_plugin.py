@@ -1,6 +1,9 @@
 """Tests for plugin.py: top-level orchestration, _process_single_album flows."""
+import json
+import os
 import pathlib
 import sys
+import tempfile
 import types
 import unittest
 from unittest import mock
@@ -573,6 +576,75 @@ class RunSpotifyMatchTests(unittest.TestCase):
             self.plugin._run_spotify_match(lib, opts, [])
 
         self.assertEqual(process_mock.call_count, 1)
+
+    def _fake_lib(self, albums):
+        class FakeLib:
+            def albums(self, _query):
+                return albums
+
+        return FakeLib()
+
+    @staticmethod
+    def _opts(progress_file, **overrides):
+        opts = types.SimpleNamespace(
+            debug=False, force=False, spotify_album_id=None,
+            interactive=False, dry_run=False,
+            resume=True, progress_file=progress_file, clear_progress=False,
+        )
+        for key, value in overrides.items():
+            setattr(opts, key, value)
+        return opts
+
+    def test_progress_is_written_then_resumed_then_cleared(self):
+        albums = [FakeAlbum("Album 1", "Artist"), FakeAlbum("Album 2", "Artist")]
+        lib = self._fake_lib(albums)
+        self.plugin.client._spotify = object()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            progress_file = os.path.join(tmpdir, "progress.json")
+            opts = self._opts(progress_file)
+
+            with mock.patch.object(self.plugin, "_process_single_album") as first:
+                self.plugin._run_spotify_match(lib, opts, [])
+            self.assertEqual(first.call_count, 2)
+            with open(progress_file, encoding="utf-8") as fh:
+                self.assertEqual(sorted(json.load(fh)), sorted(str(a.id) for a in albums))
+
+            # --resume over a finished run has nothing left to do.
+            with mock.patch.object(self.plugin, "_process_single_album") as second:
+                self.plugin._run_spotify_match(lib, opts, [])
+            second.assert_not_called()
+
+            # --clear-progress starts over.
+            with mock.patch.object(self.plugin, "_process_single_album") as third:
+                self.plugin._run_spotify_match(
+                    lib, self._opts(progress_file, clear_progress=True), [],
+                )
+            self.assertEqual(third.call_count, 2)
+
+    def test_dry_run_records_no_progress(self):
+        lib = self._fake_lib([FakeAlbum("Album 1", "Artist")])
+        self.plugin.client._spotify = object()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            progress_file = os.path.join(tmpdir, "progress.json")
+            with mock.patch.object(self.plugin, "_process_single_album"):
+                self.plugin._run_spotify_match(
+                    lib, self._opts(progress_file, dry_run=True), [],
+                )
+            self.assertFalse(os.path.exists(progress_file))
+
+    def test_empty_query_processes_nothing(self):
+        lib = self._fake_lib([])
+        self.plugin.client._spotify = object()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with mock.patch.object(self.plugin, "_process_single_album") as process:
+                self.plugin._run_spotify_match(
+                    lib, self._opts(os.path.join(tmpdir, "progress.json")), [],
+                )
+
+        process.assert_not_called()
 
 
 class CalculateMatchScoreTests(unittest.TestCase):

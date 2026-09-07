@@ -1,6 +1,7 @@
 """Tests for SpotifyClient retry/throttle behavior."""
 import pathlib
 import sys
+import types
 import unittest
 from unittest import mock
 
@@ -134,6 +135,49 @@ class SpotifyClientRetryTests(unittest.TestCase):
 
         self.assertEqual(response, "ok")
         sleep_mock.assert_called_once_with(1)
+
+
+class SpotifyClientCacheAndPaginationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        load_package()
+
+    def setUp(self):
+        self.plugin = fresh_plugin()
+        self.client = self.plugin.client
+        self.client.min_request_interval = 0
+
+    def test_search_results_are_cached_per_query(self):
+        calls = []
+
+        def search(**kwargs):
+            calls.append(kwargs)
+            return {"albums": {"items": []}}
+
+        self.client._spotify = types.SimpleNamespace(search=search)
+
+        first = self.client.search(q="album:A", type="album", limit=3)
+        second = self.client.search(q="album:A", type="album", limit=3)
+        self.client.search(q="album:B", type="album", limit=3)
+
+        self.assertEqual(first, second)
+        self.assertEqual([c["q"] for c in calls], ["album:A", "album:B"])
+
+    def test_get_album_tracks_follows_pagination(self):
+        pages = [
+            {"items": [{"id": "t1"}], "next": "page2"},
+            {"items": [{"id": "t2"}], "next": None},
+        ]
+        self.client._spotify = types.SimpleNamespace(
+            album_tracks=lambda album_id: pages[0],
+            next=lambda results: pages[1],
+        )
+
+        tracks = self.client.get_album_tracks("A" * 22)
+
+        self.assertEqual([t["id"] for t in tracks], ["t1", "t2"])
+        # Second call is served from the cache.
+        self.assertEqual(self.client.get_album_tracks("A" * 22), tracks)
 
 
 class SpotifyClientTransportTests(unittest.TestCase):

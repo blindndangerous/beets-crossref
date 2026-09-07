@@ -136,6 +136,32 @@ class InteractivePrompterTests(unittest.TestCase):
             result = prompter([c1, c2], local_album, [], lambda *a, **kw: None)
         self.assertIs(result, c2)
 
+    def test_inline_album_id_is_built_into_a_candidate(self):
+        prompter = self.cli.InteractivePrompter()
+        local_album = FakeAlbum("Album", "Artist")
+        entered = self._candidate(album={"id": "b" * 22, "name": "Entered", "artists": []})
+        built = []
+
+        def build_candidate(album_id, album, items):
+            built.append(album_id)
+            return entered
+
+        with mock.patch("builtins.input", return_value=f"i {'b' * 22}"):
+            result = prompter([self._candidate()], local_album, [], build_candidate)
+
+        self.assertIs(result, entered)
+        self.assertEqual(built, ["b" * 22])
+
+    def test_unparsable_album_id_reprompts(self):
+        prompter = self.cli.InteractivePrompter()
+        local_album = FakeAlbum("Album", "Artist")
+        c1 = self._candidate()
+
+        with mock.patch("builtins.input", side_effect=["i nonsense", "1"]):
+            result = prompter([c1], local_album, [], lambda *a, **kw: None)
+
+        self.assertIs(result, c1)
+
 
 if __name__ == "__main__":
     unittest.main()
