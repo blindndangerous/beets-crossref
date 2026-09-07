@@ -10,6 +10,7 @@ import time
 import requests
 from cachetools import TTLCache
 from spotipy import Spotify
+from spotipy.cache_handler import MemoryCacheHandler
 from spotipy.oauth2 import SpotifyClientCredentials
 from spotipy.exceptions import SpotifyException
 
@@ -238,8 +239,14 @@ class SpotifyClient:
             log.error("Spotify client_id and client_secret must be set.")
             return None
         try:
+            # MemoryCacheHandler: spotipy otherwise writes the access token to
+            # a ".cache" file in whatever directory beet was launched from
+            # (oauth2.py:182, cache_handler.py:69). The client-credentials flow
+            # needs no persistence -- a new token is cheap to fetch.
             auth_manager = SpotifyClientCredentials(
-                client_id=client_id, client_secret=client_secret
+                client_id=client_id,
+                client_secret=client_secret,
+                cache_handler=MemoryCacheHandler(),
             )
             # Hand spotipy an already-built session so it installs no urllib3
             # Retry adapter (spotipy client.py:188). With one, every status in

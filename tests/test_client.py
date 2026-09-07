@@ -153,6 +153,20 @@ class SpotifyClientTransportTests(unittest.TestCase):
             "beetsplug.spotify_album_match.client", fromlist=["SpotifyClient"],
         )
 
+    def test_token_is_cached_in_memory_not_on_disk(self):
+        """spotipy defaults to CacheFileHandler, which writes ".cache" in the CWD.
+
+        (spotipy oauth2.py:182 and cache_handler.py:69.) The client-credentials
+        flow has nothing worth persisting, so the token stays in memory.
+        """
+        from spotipy.cache_handler import MemoryCacheHandler
+
+        client = self.client_module.SpotifyClient(
+            client_id="an-id", client_secret="a-secret",
+        )
+        auth_manager = client._spotify.kwargs.get("auth_manager")
+        self.assertIsInstance(auth_manager.cache_handler, MemoryCacheHandler)
+
     def test_client_is_built_with_a_plain_requests_session(self):
         client = self.client_module.SpotifyClient(
             client_id="an-id", client_secret="a-secret",

@@ -108,6 +108,7 @@ def _build_stub_modules():
     spotipy_module = types.ModuleType("spotipy")
     spotipy_oauth2 = types.ModuleType("spotipy.oauth2")
     spotipy_exceptions = types.ModuleType("spotipy.exceptions")
+    spotipy_cache_handler = types.ModuleType("spotipy.cache_handler")
 
     class Spotify:
         def __init__(self, *args, **kwargs):
@@ -115,9 +116,13 @@ def _build_stub_modules():
             self.kwargs = kwargs
 
     class SpotifyClientCredentials:
-        def __init__(self, client_id=None, client_secret=None):
+        def __init__(self, client_id=None, client_secret=None, cache_handler=None):
             self.client_id = client_id
             self.client_secret = client_secret
+            # Real spotipy defaults this to CacheFileHandler(), which writes the
+            # token to ".cache" in the current directory (oauth2.py:182,
+            # cache_handler.py:69).
+            self.cache_handler = cache_handler
 
     class SpotifyException(Exception):
         def __init__(self, http_status=None, code=None, msg="", headers=None):
@@ -127,9 +132,14 @@ def _build_stub_modules():
             self.msg = msg
             self.headers = headers or {}
 
+    class MemoryCacheHandler:
+        def __init__(self, token_info=None):
+            self.token_info = token_info
+
     spotipy_module.Spotify = Spotify
     spotipy_oauth2.SpotifyClientCredentials = SpotifyClientCredentials
     spotipy_exceptions.SpotifyException = SpotifyException
+    spotipy_cache_handler.MemoryCacheHandler = MemoryCacheHandler
 
     cachetools_module = types.ModuleType("cachetools")
 
@@ -150,6 +160,7 @@ def _build_stub_modules():
         "spotipy": spotipy_module,
         "spotipy.oauth2": spotipy_oauth2,
         "spotipy.exceptions": spotipy_exceptions,
+        "spotipy.cache_handler": spotipy_cache_handler,
         "cachetools": cachetools_module,
     }
 
