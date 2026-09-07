@@ -11,7 +11,18 @@ import types
 # Stub beets, spotipy, cachetools
 # ---------------------------------------------------------------------------
 
+class ConfigTypeError(Exception):
+    """Stands in for confuse.ConfigTypeError."""
+
+
 class _ConfigValue:
+    """A confuse view over one key.
+
+    Casts raise like confuse does: a value that cannot be cast is a
+    configuration error, not a silent 0.0, which would leave the suite running
+    against thresholds no real run could ever have.
+    """
+
     def __init__(self, data, key):
         self._data = data
         self._key = key
@@ -26,15 +37,14 @@ class _ConfigValue:
             return bool(value)
         try:
             return cast(value)
-        except Exception:
-            return value
+        except (TypeError, ValueError) as exc:
+            raise ConfigTypeError(f"{self._key}: {value!r} is not a {cast.__name__}") from exc
 
     def as_number(self):
         value = self._data.get(self._key)
-        try:
-            return float(value)
-        except Exception:
-            return 0.0
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ConfigTypeError(f"{self._key}: {value!r} is not a number")
+        return float(value)
 
 
 class _Config:
