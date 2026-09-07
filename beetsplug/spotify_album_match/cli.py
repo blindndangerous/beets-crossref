@@ -7,12 +7,9 @@ import logging
 import os
 import re
 
-from beets.ui import Subcommand, decargs, colorize
+from beets.ui import Subcommand, colorize, print_ as _ui_print
 
-try:
-    from beets.ui import print_ as _ui_print
-except ImportError:
-    _ui_print = print  # tests stub beets.ui without print_
+from .helpers import clean_spotify_id
 
 log = logging.getLogger("beets.spotify_album_match")
 
@@ -64,10 +61,14 @@ def build_subcommand(run_func):
 
 
 def parse_args(args):
-    return decargs(args) or None
+    """Return the beets query as given, or None when there is none.
+
+    beets.ui.decargs has been a no-op since Python 3 and is deprecated in
+    beets 2.4.0 (removed in 3.0), so the arguments are passed straight through.
+    """
+    return args or None
 
 
-SPOTIFY_ID_RE = re.compile(r"[A-Za-z0-9]{22}")
 SPOTIFY_URI_RE = re.compile(r"spotify:album:([A-Za-z0-9]{22})")
 SPOTIFY_URL_RE = re.compile(r"open\.spotify\.com/album/([A-Za-z0-9]{22})")
 
@@ -83,9 +84,7 @@ def extract_spotify_album_id(text):
     match = SPOTIFY_URL_RE.search(text)
     if match:
         return match.group(1)
-    if SPOTIFY_ID_RE.fullmatch(text):
-        return text
-    return None
+    return clean_spotify_id(text)
 
 
 # ---------------------------------------------------------------------------
@@ -167,23 +166,30 @@ class InteractivePrompter:
         self._on_abort = on_abort
 
     def __call__(self, candidates, local_album, local_items, build_candidate_fn):
+        _ui_print("")
+        # Printed rather than logged: log lines go to stderr through beets'
+        # handler while the prompt goes to stdout, so a logged heading can
+        # arrive after the list it introduces.
+        _ui_print(f"Uncertain match for '{local_album.album}'.")
         if len(candidates) == 1:
             score = candidates[0]["score"]
-            log.info(
-                f"Only one uncertain match found (Score: {score:.0%}). "
-                "Please confirm or enter a different album ID."
+            _ui_print(
+                f"Only one candidate found (score {score:.0%}). "
+                "Confirm it, or enter a different album ID."
             )
 
-        _ui_print("")
         display_candidates = candidates[:5]
         for i, candidate in enumerate(display_candidates, 1):
             _ui_print(self._format_candidate_line(i, candidate))
 
         while True:
+            # Spelled out rather than "(S)kip": a screen reader reads
+            # "(B)abort" as one word.
             prompt_str = (
-                f"Choose a number (1-{len(display_candidates)}), "
-                f"({colorize('red', 'S')})kip, ({colorize('red', 'B')})abort, "
-                f"or ({colorize('green', 'I')})nput album ID/URL: "
+                f"Choose a number from 1 to {len(display_candidates)}, "
+                f"{colorize('red', 'S')} to skip, "
+                f"{colorize('red', 'B')} to abort, or "
+                f"{colorize('green', 'I')} to enter an album ID or URL: "
             )
             try:
                 choice = input(prompt_str)

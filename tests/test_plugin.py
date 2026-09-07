@@ -391,9 +391,12 @@ class WrongStoredIdTests(unittest.TestCase):
         }
 
         def fake_clear_all(alb, dry):
-            alb["spotify_album_id"] = ""
+            # Mirrors the real clear_all_ids: fields are deleted, never blanked.
+            if "spotify_album_id" in alb._values_flex:
+                del alb["spotify_album_id"]
             for it in alb.items():
-                it["spotify_track_id"] = ""
+                if "spotify_track_id" in it._values_flex:
+                    del it["spotify_track_id"]
 
         with mock.patch.object(self.plugin.client, "get_album", return_value=wrong_spotify_album), \
                 mock.patch.object(self.plugin.client, "get_album_tracks", return_value=[]), \

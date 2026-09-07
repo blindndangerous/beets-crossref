@@ -15,7 +15,7 @@ from fakes import FakeAlbum
 class ExtractSpotifyAlbumIdTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        pkg = load_package()
+        load_package()
         cls.cli = __import__("beetsplug.spotify_album_match.cli", fromlist=["x"])
 
     def test_from_uri(self):

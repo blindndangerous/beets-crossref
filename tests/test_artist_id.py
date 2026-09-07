@@ -10,6 +10,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from plugin_test_utils import fresh_plugin, load_package
 from fakes import FakeAlbum, FakeItem
 
+from beetsplug.spotify_album_match.helpers import own_artist_id
+
 
 ALBUM_ID = "albumid000000000000000"
 TRACK_ID_1 = "track10000000000000000"
@@ -32,15 +34,6 @@ def spotify_track(track_id, name, artist_id, *, track_number=1, duration_ms=1800
         "track_number": track_number,
         "duration_ms": duration_ms,
     }
-
-
-def own_artist_id(obj):
-    """The artist ID stored on the object itself, ignoring any album fallback.
-
-    A beets Item with no artist ID of its own reads its album's through `get`
-    and `in`, so item-level assertions must look at the item's own storage.
-    """
-    return obj._values_flex.get("spotify_artist_id")
 
 
 class AlbumMatchWritesArtistIdTests(unittest.TestCase):
@@ -644,11 +637,6 @@ class BackfillArtistIdTests(unittest.TestCase):
             calls.append(("get_album_tracks", album_id))
             return self.album_tracks
 
-        def get_track(track_id):
-            # Patched only so a per-track lookup would show up in the call log.
-            calls.append(("get_track", track_id))
-            return spotify_track(track_id, "Outside Track", ARTIST_TRACK_2)
-
         def get_tracks_bulk(track_ids):
             ids = list(track_ids)
             calls.append(("get_tracks_bulk", tuple(ids)))
@@ -658,7 +646,7 @@ class BackfillArtistIdTests(unittest.TestCase):
             }
 
         with mock.patch.object(self.plugin.client, "get_album", side_effect=get_album),                 mock.patch.object(self.plugin.client, "get_album_tracks",
-                                  side_effect=get_album_tracks),                 mock.patch.object(self.plugin.client, "get_track", side_effect=get_track),                 mock.patch.object(self.plugin.client, "get_tracks_bulk",
+                                  side_effect=get_album_tracks),                 mock.patch.object(self.plugin.client, "get_tracks_bulk",
                                   side_effect=get_tracks_bulk):
             yield calls
 
@@ -822,7 +810,6 @@ class BackfillArtistIdTests(unittest.TestCase):
             ("get_album_tracks", ALBUM_ID),
             ("get_tracks_bulk", (OUTSIDE_TRACK_ID,)),
         ])
-        self.assertEqual([c for c in calls if c[0] == "get_track"], [])
 
     def test_backfill_without_album_id_uses_one_bulk_call_for_all_tracks(self):
         # No stored album ID at all (e.g. cleared as malformed, or track IDs
@@ -853,7 +840,6 @@ class BackfillArtistIdTests(unittest.TestCase):
         self.assertEqual(calls, [
             ("get_tracks_bulk", (TRACK_ID_1, TRACK_ID_2, OUTSIDE_TRACK_ID)),
         ])
-        self.assertEqual([c for c in calls if c[0] == "get_track"], [])
         search_mock.assert_not_called()
         find_mock.assert_not_called()
 

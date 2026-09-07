@@ -146,6 +146,9 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
             return  # invalid --sid value
 
         albums = list(lib.albums(query))
+        if not albums:
+            log.info("No albums matched the query.")
+            return
         if provided_album_id and len(albums) > 1:
             log.error(
                 "Spotify album ID was provided, but the query matched "
@@ -487,7 +490,10 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
         if not album_id:
             log.error("Could not parse Spotify album ID from --sid.")
             return False
-        log.info(f"Using Spotify album ID from --sid: {album_id}")
+        log.info(
+            f"Using Spotify album ID from --sid: {album_id}. "
+            "Existing Spotify IDs for this album will be overwritten."
+        )
         return album_id
 
     def _clear_malformed_stored_ids(self, album, dry_run):

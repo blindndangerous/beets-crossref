@@ -302,7 +302,8 @@ class AlbumMatcher:
 
         if not (is_strong_match or is_clear_winner):
             if interactive and self.prompter:
-                log.info(f"Uncertain match for '{local_album.album}'. Please choose an option:")
+                # The prompter prints its own heading; see cli.InteractivePrompter.
+                log.debug(f"Uncertain match for '{local_album.album}'. Prompting.")
                 pop_limit = self.config['max_album_popularity_checks'].get(int)
                 display_limit = min(5, len(candidates_by_score))
                 if pop_limit > 0 and display_limit > 0:

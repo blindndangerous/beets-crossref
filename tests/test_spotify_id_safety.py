@@ -21,7 +21,6 @@ class DummySpotify:
     def __init__(self):
         self.album_track_calls = []
         self.album_calls = []
-        self.track_calls = []
         self.albums_calls = []
         self.tracks_calls = []
 
@@ -32,10 +31,6 @@ class DummySpotify:
     def album(self, album_id):
         self.album_calls.append(album_id)
         return {"id": album_id}
-
-    def track(self, track_id):
-        self.track_calls.append(track_id)
-        return {"id": track_id}
 
     def albums(self, album_ids):
         self.albums_calls.append(list(album_ids))
@@ -81,11 +76,9 @@ class SpotifyIdSafetyTest(unittest.TestCase):
     def test_client_skips_blank_or_malformed_single_id_lookups(self):
         self.assertEqual(self.client.get_album_tracks(""), [])
         self.assertIsNone(self.client.get_album("bad"))
-        self.assertIsNone(self.client.get_track("also-bad"))
 
         self.assertEqual(self.client._spotify.album_track_calls, [])
         self.assertEqual(self.client._spotify.album_calls, [])
-        self.assertEqual(self.client._spotify.track_calls, [])
 
     def test_clear_functions_delete_flexible_fields_instead_of_blanking_them(self):
         item_with_id = FakeItem("matched")

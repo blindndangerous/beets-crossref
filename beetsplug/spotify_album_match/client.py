@@ -122,18 +122,6 @@ class SpotifyClient:
             "album details for album ID",
         )
 
-    def get_track(self, track_id):
-        track_id = clean_spotify_id(track_id)
-        if not track_id:
-            log.warning("Skipping Spotify track lookup for blank/malformed track ID.")
-            return None
-        return self._cached_api_get(
-            self._track_details_cache,
-            track_id,
-            lambda: self._retry_request(self._spotify.track, track_id),
-            "track details for track ID",
-        )
-
     def get_albums_bulk(self, album_ids):
         """Return a {album_id: album_dict} map for many IDs (batched 20 at a time).
 

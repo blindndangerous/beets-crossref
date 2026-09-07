@@ -5,7 +5,6 @@ import importlib
 import pathlib
 import sys
 import types
-from unittest import mock
 
 
 # ---------------------------------------------------------------------------
@@ -196,9 +195,3 @@ def fresh_plugin():
     pkg = load_package()
     return pkg.SpotifyAlbumMatchPlugin()
 
-
-# Backwards-compatible alias used by older test files.
-def load_plugin_module():
-    """Return the plugin module (the .plugin submodule) so tests can access internals."""
-    pkg = load_package()
-    return importlib.import_module("beetsplug.spotify_album_match.plugin")
