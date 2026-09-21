@@ -1,5 +1,6 @@
 """Beets plugin entry point and top-level per-album workflow."""
 import logging
+import os
 
 from beets.dbcore import types as beets_types
 from beets.plugins import BeetsPlugin
@@ -18,6 +19,7 @@ from .client import RateLimitAbort, SpotifyClient
 from .helpers import (
     clean_spotify_id,
     discard_artist_id,
+    dry_run_prefix,
     own_artist_id,
     set_artist_id,
 )
@@ -183,7 +185,7 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
             log.debug(f"Skipping album with all tracks matched: {album.album}")
             return
 
-        log_prefix = self._log_prefix(dry_run)
+        log_prefix = dry_run_prefix(dry_run)
         log.info(f"Processing album: {album.albumartist} - {album.album}")
         if not force and verify_existing and existing_album_id:
             if self.repairer.try_verify_existing_album_id(album, existing_album_id, dry_run, log_prefix):
@@ -246,7 +248,7 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
             )
 
     def _apply_provided_album_id(self, album, album_id, dry_run, force):
-        log_prefix = self._log_prefix(dry_run)
+        log_prefix = dry_run_prefix(dry_run)
         local_items = list(album.items())
         candidate = self.matcher.build_candidate_from_album_id(album_id, album, local_items)
         if not candidate:
@@ -274,7 +276,7 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
             self.clear_track_ids(unmatched_items, dry_run)
 
     def _apply_authoritative_album_mapping(self, album, album_id, dry_run):
-        log_prefix = self._log_prefix(dry_run)
+        log_prefix = dry_run_prefix(dry_run)
         spotify_tracks = self.client.get_album_tracks(album_id)
         if not spotify_tracks:
             log.warning(
@@ -296,20 +298,18 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
         clear_on_no_match is enabled. Unlike clear_track_ids this is NOT
         gated on a config flag.
         """
-        log_prefix = self._log_prefix(dry_run)
+        log_prefix = dry_run_prefix(dry_run)
         if 'spotify_album_id' in album:
-            log.info(f"  -> {log_prefix}Clearing Spotify album ID for '{album.album}'")
-            if not dry_run:
-                del album['spotify_album_id']
-                discard_artist_id(album)
-                album.store(inherit=False)
+            self._clear_field(
+                album, 'spotify_album_id', dry_run, is_album=True,
+                message=f"  -> {log_prefix}Clearing Spotify album ID for '{album.album}'",
+            )
         for item in album.items():
             if 'spotify_track_id' in item:
-                log.info(f"  -> {log_prefix}Clearing Spotify track ID for: '{item.title}'")
-                if not dry_run:
-                    del item['spotify_track_id']
-                    discard_artist_id(item)
-                    item.store()
+                self._clear_field(
+                    item, 'spotify_track_id', dry_run,
+                    message=f"  -> {log_prefix}Clearing Spotify track ID for: '{item.title}'",
+                )
 
     def clear_track_ids(self, items, dry_run):
         """Clear spotify_track_id for items that could not be matched.
@@ -318,16 +318,15 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
         """
         if not self.config['clear_unmatched_track_ids'].get(bool):
             return
-        log_prefix = self._log_prefix(dry_run)
+        log_prefix = dry_run_prefix(dry_run)
         for item in items:
             if 'spotify_track_id' in item:
-                log.info(
-                    f"  -> {log_prefix}Cleared orphaned Spotify track ID for: '{item.title}'"
+                self._clear_field(
+                    item, 'spotify_track_id', dry_run,
+                    message=(
+                        f"  -> {log_prefix}Cleared orphaned Spotify track ID for: '{item.title}'"
+                    ),
                 )
-                if not dry_run:
-                    del item['spotify_track_id']
-                    discard_artist_id(item)
-                    item.store()
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -356,35 +355,50 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
         return value is still None, so the rest of the run behaves as the real
         run would.
         """
-        log_prefix = self._log_prefix(dry_run)
+        log_prefix = dry_run_prefix(dry_run)
         if 'spotify_album_id' in album:
             album_id = album.get('spotify_album_id')
             if not clean_spotify_id(album_id):
-                log.warning(
-                    f"{log_prefix}Clearing blank/malformed Spotify album ID "
-                    f"for '{album.album}': {album_id!r}"
+                self._clear_field(
+                    album, 'spotify_album_id', dry_run, is_album=True, level=logging.WARNING,
+                    message=(
+                        f"{log_prefix}Clearing blank/malformed Spotify album ID "
+                        f"for '{album.album}': {album_id!r}"
+                    ),
                 )
-                if not dry_run:
-                    del album['spotify_album_id']
-                    discard_artist_id(album)
-                    album.store(inherit=False)
         self._clear_malformed_artist_id(album, album.album, dry_run, is_album=True)
 
         for item in album.items():
             if 'spotify_track_id' in item:
                 track_id = item.get('spotify_track_id')
                 if not clean_spotify_id(track_id):
-                    log.warning(
-                        f"{log_prefix}Clearing blank/malformed Spotify track ID "
-                        f"for '{item.title}': {track_id!r}"
+                    self._clear_field(
+                        item, 'spotify_track_id', dry_run, level=logging.WARNING,
+                        message=(
+                            f"{log_prefix}Clearing blank/malformed Spotify track ID "
+                            f"for '{item.title}': {track_id!r}"
+                        ),
                     )
-                    if not dry_run:
-                        del item['spotify_track_id']
-                        discard_artist_id(item)
-                        item.store()
             self._clear_malformed_artist_id(item, item.title, dry_run)
 
         return clean_spotify_id(album.get('spotify_album_id'))
+
+    @staticmethod
+    def _clear_field(obj, field, dry_run, *, message, is_album=False, level=logging.INFO):
+        """Log *message*, then delete *field* and the artist ID beside it.
+
+        Under --dry-run the message is still logged but nothing is written.
+        `is_album` selects the album store signature, which must not inherit.
+        """
+        log.log(level, message)
+        if dry_run:
+            return
+        del obj[field]
+        discard_artist_id(obj)
+        if is_album:
+            obj.store(inherit=False)
+        else:
+            obj.store()
 
     def _clear_malformed_artist_id(self, obj, label, dry_run, *, is_album=False):
         """Remove a blank or malformed stored artist ID left on its own.
@@ -397,7 +411,7 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
         if artist_id is None or clean_spotify_id(artist_id):
             return
         log.warning(
-            f"{self._log_prefix(dry_run)}Clearing blank/malformed Spotify artist ID "
+            f"{dry_run_prefix(dry_run)}Clearing blank/malformed Spotify artist ID "
             f"for '{label}': {artist_id!r}"
         )
         if not dry_run:
@@ -409,13 +423,9 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
 
     @staticmethod
     def _clear_progress_file(progress_file):
-        import os
         if os.path.exists(progress_file):
             os.remove(progress_file)
             log.info("Progress file cleared.")
         else:
             log.info("No progress file to clear.")
 
-    @staticmethod
-    def _log_prefix(dry_run):
-        return "[DRY RUN] " if dry_run else ""

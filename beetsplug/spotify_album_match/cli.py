@@ -57,8 +57,9 @@ def build_subcommand(run_func):
     return cmd
 
 
-SPOTIFY_URI_RE = re.compile(r"spotify:album:([A-Za-z0-9]{22})")
-SPOTIFY_URL_RE = re.compile(r"open\.spotify\.com/album/([A-Za-z0-9]{22})")
+SPOTIFY_ALBUM_REF_RE = re.compile(
+    r"(?:spotify:album:|open\.spotify\.com/album/)([A-Za-z0-9]{22})"
+)
 
 
 def extract_spotify_album_id(text):
@@ -66,13 +67,8 @@ def extract_spotify_album_id(text):
     if not text:
         return None
     text = text.strip()
-    match = SPOTIFY_URI_RE.search(text)
-    if match:
-        return match.group(1)
-    match = SPOTIFY_URL_RE.search(text)
-    if match:
-        return match.group(1)
-    return clean_spotify_id(text)
+    match = SPOTIFY_ALBUM_REF_RE.search(text)
+    return match.group(1) if match else clean_spotify_id(text)
 
 
 # ---------------------------------------------------------------------------

@@ -13,10 +13,12 @@ from .helpers import (
     artist_set_score,
     build_album_search_queries,
     calculate_match_score,
+    dry_run_prefix,
     find_matching_spotify_track,
     fuzzy_title_score,
     is_variant_title,
     set_artist_id,
+    spotify_artist_names,
 )
 
 log = logging.getLogger("beets.spotify_album_match")
@@ -47,16 +49,9 @@ class AlbumMatcher:
         Selection considers title/artist scores, popularity, and
         variant-vs-standard preference.
         """
-        candidates_by_id = self._search_album_candidates(local_album)
-        if not candidates_by_id:
-            return None, []
-
-        local_items = list(local_album.items())
-        preliminary = self._build_preliminary_candidates(local_album, candidates_by_id)
-        candidates = self._build_detailed_candidates(local_album, local_items, preliminary)
+        local_items, candidates = self._scored_candidates(local_album)
         if not candidates:
             return None, []
-
         return self._select_album_candidate(local_album, local_items, candidates, interactive)
 
     def build_candidate_from_album_id(self, album_id, local_album, local_items):
@@ -69,10 +64,7 @@ class AlbumMatcher:
         score = calculate_match_score(local_album, local_items, tracks, details)
         track_count = len(tracks)
         base_title_score = fuzzy_title_score(local_album.album, details.get('name', ''))
-        artist_score = artist_set_score(
-            local_album.albumartist,
-            [artist.get('name', '') for artist in details.get('artists', [])],
-        )
+        artist_score = artist_set_score(local_album.albumartist, spotify_artist_names(details))
         is_variant = is_variant_title(details.get('name', '')) and base_title_score >= VARIANT_TITLE_THRESHOLD
         popularity = details.get('popularity') or 0
 
@@ -89,14 +81,17 @@ class AlbumMatcher:
 
     def get_related_release_candidates(self, local_album, exclude_album_id=None):
         """Return related-release candidates, sorted by popularity then score."""
+        _local_items, candidates = self._scored_candidates(local_album)
+        return self._related_candidates(candidates, exclude_album_id)
+
+    def _scored_candidates(self, local_album):
+        """Search Spotify and score what comes back. Returns (local_items, candidates)."""
         candidates_by_id = self._search_album_candidates(local_album)
         if not candidates_by_id:
-            return []
-
+            return [], []
         local_items = list(local_album.items())
         preliminary = self._build_preliminary_candidates(local_album, candidates_by_id)
-        candidates = self._build_detailed_candidates(local_album, local_items, preliminary)
-        return self._related_candidates(candidates, exclude_album_id)
+        return local_items, self._build_detailed_candidates(local_album, local_items, preliminary)
 
     def _related_candidates(self, candidates, exclude_album_id):
         """Candidates that pass as another edition of the same album, best first.
@@ -145,10 +140,7 @@ class AlbumMatcher:
         min_preliminary_artist_score = self.config['min_preliminary_artist_score'].as_number()
         for sp_album in candidates_by_id.values():
             base_title_score = fuzzy_title_score(local_album.album, sp_album.get('name', ''))
-            artist_score = artist_set_score(
-                local_album.albumartist,
-                [artist.get('name', '') for artist in sp_album.get('artists', [])],
-            )
+            artist_score = artist_set_score(local_album.albumartist, spotify_artist_names(sp_album))
             if artist_score < min_preliminary_artist_score:
                 log.debug(
                     f"  -> Skipping candidate '{sp_album.get('name', '')}' "
@@ -342,7 +334,7 @@ class AlbumMatcher:
         Returns the list of items that could not be matched.
         """
         unmatched_spotify_tracks = list(spotify_tracks)
-        log_prefix = "[DRY RUN] " if dry_run else ""
+        log_prefix = dry_run_prefix(dry_run)
         context_prefix = f"{context} " if context else ""
         unmatched_items = []
 

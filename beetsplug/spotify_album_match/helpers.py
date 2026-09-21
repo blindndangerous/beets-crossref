@@ -57,6 +57,7 @@ ARTIST_SEPARATOR_PATTERN = re.compile(
     re.IGNORECASE,
 )
 SPOTIFY_ID_PATTERN = re.compile(r"^[A-Za-z0-9]{22}$")
+ALBUM_TYPE_SCORES = {"album": 1.0, "compilation": 0.7, "single": 0.5}
 
 
 def clean_spotify_id(value):
@@ -170,14 +171,6 @@ def _fuzz_max_score(a, b):
     ) / 100
 
 
-def fuzzy_score(a, b):
-    a_norm = normalize_text(a)
-    b_norm = normalize_text(b)
-    if not a_norm or not b_norm:
-        return 0
-    return _fuzz_max_score(a_norm, b_norm)
-
-
 def fuzzy_title_score(a, b):
     a_norm = normalize_title(a)
     b_norm = normalize_title(b)
@@ -208,19 +201,10 @@ def split_artist_tokens(text):
 
 
 def get_artist_tokens(artist_names):
-    tokens = []
-    if isinstance(artist_names, str):
-        tokens.extend(split_artist_tokens(artist_names))
-    else:
-        for name in artist_names:
-            tokens.extend(split_artist_tokens(name))
-    seen = set()
-    unique = []
-    for token in tokens:
-        if token not in seen:
-            unique.append(token)
-            seen.add(token)
-    return unique
+    names = [artist_names] if isinstance(artist_names, str) else artist_names
+    return list(dict.fromkeys(
+        token for name in names for token in split_artist_tokens(name)
+    ))
 
 
 def artist_fuzzy_score(a, b):
@@ -238,17 +222,28 @@ def artist_set_score(local_artist, candidate_artists):
         return 0.0
 
     def avg_best(source, target):
-        scores = []
-        for token in source:
-            best = 0.0
-            for cand in target:
-                score = artist_fuzzy_score(token, cand)
-                if score > best:
-                    best = score
-            scores.append(best)
-        return sum(scores) / len(scores) if scores else 0.0
+        return sum(
+            max(artist_fuzzy_score(token, cand) for cand in target) for token in source
+        ) / len(source)
 
     return (avg_best(local_tokens, candidate_tokens) + avg_best(candidate_tokens, local_tokens)) / 2
+
+
+def spotify_artist_names(spotify_obj):
+    """Artist names from a Spotify album or track object."""
+    return [artist.get('name', '') for artist in spotify_obj.get('artists', [])]
+
+
+def album_identity_score(local_album, spotify_album):
+    """How much a Spotify album looks like this beets album: title 0.6, artist 0.4."""
+    return (
+        fuzzy_title_score(local_album.album, spotify_album.get('name', '')) * 0.6
+        + artist_set_score(local_album.albumartist, spotify_artist_names(spotify_album)) * 0.4
+    )
+
+
+def dry_run_prefix(dry_run):
+    return "[DRY RUN] " if dry_run else ""
 
 
 def escape_query_value(value):
@@ -275,35 +270,24 @@ def _add_unique_query(queries, seen, query):
 
 
 def build_album_search_queries(album_title, album_artist):
+    """Query variants from most specific to least; duplicates are dropped."""
     album = album_title or ""
-    album_stripped = strip_version_tokens(album)
     artist_full = album_artist or ""
     artist_tokens = get_artist_tokens(artist_full)
     primary_artist = artist_tokens[0] if artist_tokens else artist_full
 
-    album_q = escape_query_value(album)
-    album_stripped_q = escape_query_value(album_stripped)
-    artist_full_q = escape_query_value(artist_full)
-    primary_artist_q = escape_query_value(primary_artist)
+    albums = [escape_query_value(album), escape_query_value(strip_version_tokens(album))]
+    artists = [escape_query_value(artist_full), escape_query_value(primary_artist)]
 
     queries = []
     seen = set()
-
-    if album_q and artist_full_q:
-        _add_unique_query(queries, seen, f'album:"{album_q}" artist:"{artist_full_q}"')
-    if album_stripped_q and album_stripped_q != album_q and artist_full_q:
-        _add_unique_query(queries, seen, f'album:"{album_stripped_q}" artist:"{artist_full_q}"')
-    if album_q and primary_artist_q and primary_artist_q != artist_full_q:
-        _add_unique_query(queries, seen, f'album:"{album_q}" artist:"{primary_artist_q}"')
-    if album_stripped_q and primary_artist_q and (
-        album_stripped_q != album_q or primary_artist_q != artist_full_q
-    ):
-        _add_unique_query(queries, seen, f'album:"{album_stripped_q}" artist:"{primary_artist_q}"')
-    if album_q:
-        _add_unique_query(queries, seen, f'album:"{album_q}"')
-    if album_stripped_q and album_stripped_q != album_q:
-        _add_unique_query(queries, seen, f'album:"{album_stripped_q}"')
-
+    for artist_q in artists:
+        for album_q in albums:
+            if album_q and artist_q:
+                _add_unique_query(queries, seen, f'album:"{album_q}" artist:"{artist_q}"')
+    for album_q in albums:
+        if album_q:
+            _add_unique_query(queries, seen, f'album:"{album_q}"')
     return queries
 
 
@@ -368,13 +352,7 @@ def find_matching_spotify_track(
 
 
 def album_type_score(album_type):
-    if album_type == "album":
-        return 1.0
-    if album_type == "compilation":
-        return 0.7
-    if album_type == "single":
-        return 0.5
-    return 0.6
+    return ALBUM_TYPE_SCORES.get(album_type, 0.6)
 
 
 def calculate_fuzzy_title_score(local_items, spotify_tracks):
@@ -382,18 +360,13 @@ def calculate_fuzzy_title_score(local_items, spotify_tracks):
     spotify_titles = [normalize_title(track.get('name', '')) for track in spotify_tracks]
 
     def avg_best_match(source, target):
-        total = 0
-        count = 0
-        for title1 in source:
-            if not title1:
-                continue
-            best = max(
-                (fuzzy_score(title1, title2) for title2 in target if title2),
-                default=0,
-            )
-            total += best
-            count += 1
-        return (total / count) if count > 0 else 0
+        titles = [title for title in source if title]
+        if not titles:
+            return 0
+        return sum(
+            max((_fuzz_max_score(title, other) for other in target if other), default=0)
+            for title in titles
+        ) / len(titles)
 
     fwd = avg_best_match(local_titles, spotify_titles)
     rev = avg_best_match(spotify_titles, local_titles)
@@ -411,10 +384,7 @@ def calculate_match_score(local_album, local_items, spotify_tracks, sp_album_can
         track_count_similarity = 0.0
 
     album_title_score = fuzzy_title_score(local_album.album, sp_album_candidate.get('name', ''))
-    artist_score = artist_set_score(
-        local_album.albumartist,
-        [artist.get('name', '') for artist in sp_album_candidate.get('artists', [])],
-    )
+    artist_score = artist_set_score(local_album.albumartist, spotify_artist_names(sp_album_candidate))
     type_score = album_type_score(sp_album_candidate.get('album_type', ''))
 
     year_score = 0.0

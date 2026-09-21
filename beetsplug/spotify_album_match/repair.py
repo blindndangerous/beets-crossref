@@ -8,8 +8,8 @@ The AlbumRepairer class owns:
 import logging
 
 from .helpers import (
-    artist_set_score,
-    fuzzy_title_score,
+    album_identity_score,
+    dry_run_prefix,
     set_artist_id,
 )
 
@@ -53,12 +53,7 @@ class AlbumRepairer:
         spotify_album_details = self.client.get_album(existing_album_id)
         if spotify_album_details and isinstance(spotify_album_details, dict):
             album_validation_threshold = self.config['existing_album_validation_threshold'].as_number()
-            title_score = fuzzy_title_score(album.album, spotify_album_details.get('name', ''))
-            artist_score = artist_set_score(
-                album.albumartist,
-                [artist.get('name', '') for artist in spotify_album_details.get('artists', [])],
-            )
-            album_validation_score = (title_score * 0.6) + (artist_score * 0.4)
+            album_validation_score = album_identity_score(album, spotify_album_details)
             if album_validation_score < album_validation_threshold:
                 log.warning(
                     f"{log_prefix}Stored Spotify album '{spotify_album_details.get('name', '')}' "
@@ -161,7 +156,7 @@ class AlbumRepairer:
 
     def apply_repair_strategy(self, album, unresolved, existing_album_id, dry_run):
         """Apply the configured repair strategy to items not matched by the stored album."""
-        log_prefix = "[DRY RUN] " if dry_run else ""
+        log_prefix = dry_run_prefix(dry_run)
         if self.get_repair_strategy() == "related_release":
             log.info(
                 f"{log_prefix}Remaining unmatched track(s): {len(unresolved)}. "
@@ -196,7 +191,7 @@ class AlbumRepairer:
             return items
 
         remaining = list(items)
-        log_prefix = "[DRY RUN] " if dry_run else ""
+        log_prefix = dry_run_prefix(dry_run)
         for candidate in related_candidates:
             if not remaining:
                 break
