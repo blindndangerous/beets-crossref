@@ -96,21 +96,22 @@ class AlbumMatcher:
         local_items = list(local_album.items())
         preliminary = self._build_preliminary_candidates(local_album, candidates_by_id)
         candidates = self._build_detailed_candidates(local_album, local_items, preliminary)
-        if not candidates:
-            return []
+        return self._related_candidates(candidates, exclude_album_id)
 
-        min_artist_score = self.config['min_related_release_artist_score'].as_number()
-        related = []
-        for candidate in candidates:
-            album_id = candidate["album"].get("id")
-            if exclude_album_id and album_id == exclude_album_id:
-                continue
-            if candidate["artist_score"] < min_artist_score:
-                continue
-            if candidate["base_title_score"] < VARIANT_TITLE_THRESHOLD:
-                continue
-            related.append(candidate)
+    def _related_candidates(self, candidates, exclude_album_id):
+        """Candidates that pass as another edition of the same album, best first.
 
+        Same artist (`related_artist_threshold`), a title close enough to the
+        local one to be a variant rather than a different record, and not the
+        release we already picked.
+        """
+        threshold = self.config['related_artist_threshold'].as_number()
+        related = [
+            candidate for candidate in candidates
+            if not (exclude_album_id and candidate["album"].get("id") == exclude_album_id)
+            and candidate["artist_score"] >= threshold
+            and candidate["base_title_score"] >= VARIANT_TITLE_THRESHOLD
+        ]
         related.sort(key=lambda c: ((c["popularity"] or 0), c["score"]), reverse=True)
         return related
 
@@ -303,20 +304,7 @@ class AlbumMatcher:
     def _get_supplemental_candidates(self, selected_candidate, candidates):
         if not selected_candidate:
             return []
-        selected_id = selected_candidate["album"]["id"]
-        related_artist_threshold = self.config['related_artist_threshold'].as_number()
-        supplemental = []
-        for candidate in candidates:
-            if candidate["album"]["id"] == selected_id:
-                continue
-            if candidate["base_title_score"] < VARIANT_TITLE_THRESHOLD:
-                continue
-            if candidate["artist_score"] < related_artist_threshold:
-                continue
-            supplemental.append(candidate)
-
-        supplemental.sort(key=lambda c: ((c["popularity"] or 0), c["score"]), reverse=True)
-        return supplemental
+        return self._related_candidates(candidates, selected_candidate["album"]["id"])
 
     def _populate_album_popularity(self, candidates, limit=None):
         if not candidates:

@@ -121,8 +121,7 @@ All keys go under `spotify_album_match:` in `config.yaml`.
 - `max_album_popularity_checks` (default `1`) — how many candidates to fetch full details
   for so popularity is known (0 disables). Sorting is by score first, so popularity only
   decides an exact tie.
-- `related_artist_threshold` (default `0.90`) — minimum artist fuzzy score for a result to count as a related/variant release rather than filtered.
-- `min_related_release_artist_score` (default `0.85`) — minimum artist score when collecting supplemental related releases for bonus tracks.
+- `related_artist_threshold` (default `0.90`) — minimum artist fuzzy score for a result to count as a related/variant release rather than filtered. Also the floor for the supplemental releases searched for bonus tracks.
 - `min_preliminary_artist_score` (default `0.20`) — hard floor at the quick-filter stage; below this is dropped before track-level API calls.
 
 ### Track Matching (album-level)

@@ -45,7 +45,6 @@ CONFIG_DEFAULTS = {
     'verify_existing_ids': True,
     'existing_id_mismatch_threshold': 0.3,
     'existing_album_repair_strategy': 'related_release',
-    'min_related_release_artist_score': 0.85,
     'related_artist_threshold': 0.90,
     'min_preliminary_artist_score': 0.20,
     'clear_unmatched_track_ids': True,

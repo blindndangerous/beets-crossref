@@ -130,8 +130,7 @@ Album matching:
 - `certainty_margin` (`0.15`) — score gap that makes the top candidate a clear winner even below `match_threshold`
 - `max_album_candidates` (`3`) — how many search results are scored in detail
 - `max_album_popularity_checks` (`1`) — how many candidates get a full details fetch so their popularity is known (0 disables). Candidates are ranked by score, and popularity only separates two scores that are exactly equal
-- `related_artist_threshold` (`0.90`) — minimum artist score for a result to count as a related or variant release
-- `min_related_release_artist_score` (`0.85`) — minimum artist score when collecting related releases for bonus tracks
+- `related_artist_threshold` (`0.90`) — minimum artist score for a result to count as a related or variant release, both when selecting and when collecting related releases for bonus tracks
 - `min_preliminary_artist_score` (`0.20`) — hard floor at the quick-filter stage, applied before any track-level API calls
 
 Track matching:
