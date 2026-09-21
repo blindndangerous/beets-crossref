@@ -4,10 +4,10 @@ A [beets](https://beets.io/) plugin that matches the albums and tracks in your
 library to Spotify and stores the resulting Spotify IDs on your items.
 
 For each album it searches Spotify by title and artist, scores the candidates
-with a weighted fuzzy match, picks a winner, and then maps each local track
-onto a Spotify track. On later runs it
-verifies the IDs it already stored, repairs the ones that drifted (bonus tracks,
-deluxe editions), and clears the ones that are wrong.
+with a weighted fuzzy match, picks a winner, and then maps each local track onto
+a Spotify track. On later runs it verifies the IDs it already stored, repairs the
+ones that drifted (bonus tracks, deluxe editions), and clears the ones that are
+wrong.
 
 ## Fields written
 
@@ -150,6 +150,22 @@ Clearing stale IDs:
 
 - `clear_unmatched_track_ids` (`true`) — clear `spotify_track_id` on tracks left unmatched after a successful album match
 - `clear_on_no_match` (`true`) — clear album and track IDs when nothing matches at all
+
+## Scoring
+
+The composite album score that `match_threshold` and `certainty_margin` are
+compared against is a weighted sum; the weights add up to 1.0, so a perfect
+match scores exactly 1.0.
+
+- track titles (0.45) — average fuzzy score of the local titles against the Spotify ones, both ways round
+- album title (0.20) — fuzzy score of the album name
+- artist (0.15) — fuzzy artist-set score
+- track count (0.10) — 1 minus the relative difference in track counts
+- album type (0.05) — 1.0 album, 0.7 compilation, 0.5 single, 0.6 anything else
+- year (0.05) — 1.0 for the same year, 0.5 within one year, else 0
+
+A stored album ID is verified against a simpler score, title * 0.6 + artist *
+0.4, compared against `existing_album_validation_threshold`.
 
 ## Development
 
