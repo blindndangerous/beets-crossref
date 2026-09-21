@@ -309,9 +309,8 @@ def find_matching_spotify_track(
         if title_score <= 0:
             continue
 
-        candidate_artists = [artist.get("name", "") for artist in track.get("artists", [])]
         if item_artist:
-            artist_score = artist_set_score(item_artist, candidate_artists)
+            artist_score = artist_set_score(item_artist, spotify_artist_names(track))
             if artist_score < min_artist_score:
                 continue
         else:

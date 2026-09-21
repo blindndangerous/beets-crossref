@@ -294,7 +294,7 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
     def clear_all_ids(self, album, dry_run):
         """Clear spotify_album_id and every spotify_track_id for the album.
 
-        Called when fallback evidence points to the wrong album, or when
+        Called when a stored album ID fails verification, or when
         clear_on_no_match is enabled. Unlike clear_track_ids this is NOT
         gated on a config flag.
         """
