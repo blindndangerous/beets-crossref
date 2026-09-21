@@ -163,9 +163,8 @@ Album score weights (sum to 1.0):
 4. Track matching — match each local track to the winning album's tracks via fuzzy title+artist+duration.
 5. Related-release repair — unmatched tracks (e.g. bonus) searched against variant/deluxe editions.
 6. Verification on subsequent runs — validate stored album by title+artist; if wrong, clear
-   and re-search. Otherwise verify track positions and repair only what's off. ISRC comparison
-   is written for full track objects; an album's track list is simplified objects with no
-   `external_ids`, so on that path only position is checked. Durations are scored, not verified.
+   and re-search. Otherwise verify track positions and repair only what's off. Durations are
+   scored, not verified.
 
 ## Key Design Notes
 

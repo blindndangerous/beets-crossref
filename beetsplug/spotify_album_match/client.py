@@ -3,6 +3,7 @@
 All Spotify API concerns (authentication, throttling, pagination, caching)
 live here so the matching layer can focus on music logic.
 """
+import contextlib
 import logging
 import time
 
@@ -108,12 +109,17 @@ class SpotifyClient:
         if not album_id:
             log.warning("Skipping Spotify album lookup for blank/malformed album ID.")
             return None
-        return self._cached_api_get(
-            self._album_details_cache,
-            album_id,
-            lambda: self._retry_request(self._spotify.album, album_id),
-            "album details for album ID",
-        )
+        cached = self._album_details_cache.get(album_id)
+        if cached is not None:
+            return cached
+        try:
+            album = self._retry_request(self._spotify.album, album_id)
+        except SpotifyException as e:
+            log.warning(f"Could not fetch album details for album ID {album_id}: {e}")
+            return None
+        if album is not None:
+            self._album_details_cache[album_id] = album
+        return album
 
     def get_albums_bulk(self, album_ids):
         """Return a {album_id: album_dict} map for many IDs (batched 20 at a time).
@@ -214,15 +220,12 @@ class SpotifyClient:
                 return func(*args, **kwargs)
             except SpotifyException as e:
                 if e.http_status == 429:
+                    # SpotifyException.headers is always a dict: spotipy
+                    # defaults it to {} in __init__, so only the value needs
+                    # guarding.
                     retry_after = self.retry_delay
-                    headers = getattr(e, "headers", None)
-                    if isinstance(headers, dict):
-                        header_val = headers.get('Retry-After')
-                        if header_val is not None:
-                            try:
-                                retry_after = int(header_val)
-                            except (TypeError, ValueError):
-                                retry_after = self.retry_delay
+                    with contextlib.suppress(TypeError, ValueError):
+                        retry_after = int(e.headers.get('Retry-After', retry_after))
                     if self.stop_on_rate_limit:
                         self._abort_requested = True
                         raise RateLimitAbort(
@@ -268,16 +271,3 @@ class SpotifyClient:
         until = time.monotonic() + retry_after
         if until > self._rate_limit_until:
             self._rate_limit_until = until
-
-    def _cached_api_get(self, cache, key, fetch_fn, error_label):
-        cached = cache.get(key)
-        if cached is not None:
-            return cached
-        try:
-            result = fetch_fn()
-        except SpotifyException as e:
-            log.warning(f"Could not fetch {error_label} {key}: {e}")
-            return None
-        if result is not None:
-            cache[key] = result
-        return result

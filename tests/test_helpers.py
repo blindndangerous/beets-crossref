@@ -25,7 +25,6 @@ class DummyItem:
     albumartist: str = ""
     track: int = 0
     disc: int = 0
-    isrc: str = ""
     length: float = 0.0
 
 
@@ -277,57 +276,6 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
             match_threshold=0.90, min_artist_score=0.90,
         )
         self.assertIsNone(match)
-
-    # --- find_matching_spotify_track ISRC ---
-
-    def test_track_matching_isrc_bypasses_fuzzy(self):
-        item = DummyItem(
-            title="Something Completely Different",
-            artist="Wrong Artist",
-            isrc="USRC12345678",
-        )
-        spotify_tracks = [
-            {
-                "id": "isrc_match",
-                "name": "Actual Song Name",
-                "artists": [{"name": "Real Artist"}],
-                "external_ids": {"isrc": "USRC12345678"},
-                "track_number": 1,
-                "disc_number": 1,
-                "duration_ms": 200000,
-            },
-            {
-                "id": "fuzzy_candidate",
-                "name": "Something Completely Different",
-                "artists": [{"name": "Wrong Artist"}],
-                "external_ids": {},
-                "track_number": 2,
-                "disc_number": 1,
-                "duration_ms": 200000,
-            },
-        ]
-        match = find_matching_spotify_track(item, spotify_tracks, duration_tolerance=3)
-        self.assertEqual(match["id"], "isrc_match")
-
-    def test_track_matching_non_matching_isrc_falls_through_to_fuzzy(self):
-        item = DummyItem(
-            title="Song A",
-            artist="Artist",
-            isrc="NOMATCH00000",
-        )
-        spotify_tracks = [
-            {
-                "id": "fuzzy_match",
-                "name": "Song A",
-                "artists": [{"name": "Artist"}],
-                "external_ids": {"isrc": "DIFFERENT00000"},
-                "track_number": 1,
-                "disc_number": 1,
-                "duration_ms": 200000,
-            },
-        ]
-        match = find_matching_spotify_track(item, spotify_tracks, duration_tolerance=3, match_threshold=0.5)
-        self.assertEqual(match["id"], "fuzzy_match")
 
     # --- find_matching_spotify_track duration penalty ---
 

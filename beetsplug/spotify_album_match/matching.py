@@ -211,7 +211,6 @@ class AlbumMatcher:
 
     def _select_album_candidate(self, local_album, local_items, candidates, interactive):
         candidates_by_score = sorted(candidates, key=lambda c: c["score"], reverse=True)
-        all_candidates = candidates_by_score
         related_artist_threshold = self.config['related_artist_threshold'].as_number()
         related_candidates = [
             c for c in candidates_by_score if c["artist_score"] >= related_artist_threshold
@@ -222,11 +221,15 @@ class AlbumMatcher:
             )
             if interactive and self.prompter:
                 log.info("No related releases found. You can enter a Spotify album ID/URL.")
-                selected = self._prompt(all_candidates, local_album, local_items)
+                selected = self.prompter(
+                    candidates_by_score, local_album, local_items,
+                    self.build_candidate_from_album_id,
+                )
                 if not selected:
                     return None, []
-                supplemental = self._get_supplemental_candidates(selected, all_candidates)
-                return selected["album"], supplemental
+                # Every candidate here is below related_artist_threshold, so
+                # there are no supplemental releases to offer.
+                return selected["album"], []
             return None, []
 
         candidates_by_score = related_candidates
@@ -264,7 +267,10 @@ class AlbumMatcher:
                     self._populate_album_popularity(
                         candidates_by_score, limit=min(pop_limit, display_limit),
                     )
-                selected = self._prompt(candidates_by_score, local_album, local_items)
+                selected = self.prompter(
+                    candidates_by_score, local_album, local_items,
+                    self.build_candidate_from_album_id,
+                )
                 if not selected:
                     return None, []
                 supplemental = self._get_supplemental_candidates(selected, candidates_by_score)
@@ -297,9 +303,6 @@ class AlbumMatcher:
 
         supplemental = self._get_supplemental_candidates(selected, candidates_by_score)
         return selected["album"], supplemental
-
-    def _prompt(self, candidates, local_album, local_items):
-        return self.prompter(candidates, local_album, local_items, self.build_candidate_from_album_id)
 
     def _get_supplemental_candidates(self, selected_candidate, candidates):
         if not selected_candidate:
@@ -348,7 +351,17 @@ class AlbumMatcher:
             if existing_id and not overwrite:
                 continue
 
-            matched_track = self.find_matching_spotify_track(item, unmatched_spotify_tracks)
+            matched_track = find_matching_spotify_track(
+                item,
+                unmatched_spotify_tracks,
+                duration_tolerance=self.config['duration_tolerance'].get(int),
+                match_threshold=self.config['track_match_threshold'].as_number(),
+                min_artist_score=self.config['min_track_artist_score'].as_number(),
+                duration_mismatch_penalty_threshold=(
+                    self.config['duration_mismatch_penalty_threshold'].get(int)
+                ),
+                duration_mismatch_penalty=self.config['duration_mismatch_penalty'].as_number(),
+            )
             if matched_track:
                 new_id = matched_track['id']
                 if existing_id and existing_id == new_id:
@@ -370,16 +383,3 @@ class AlbumMatcher:
                 unmatched_items.append(item)
 
         return unmatched_items
-
-    def find_matching_spotify_track(self, item, spotify_tracks):
-        return find_matching_spotify_track(
-            item,
-            spotify_tracks,
-            duration_tolerance=self.config['duration_tolerance'].get(int),
-            match_threshold=self.config['track_match_threshold'].as_number(),
-            min_artist_score=self.config['min_track_artist_score'].as_number(),
-            duration_mismatch_penalty_threshold=(
-                self.config['duration_mismatch_penalty_threshold'].get(int)
-            ),
-            duration_mismatch_penalty=self.config['duration_mismatch_penalty'].as_number(),
-        )

@@ -316,14 +316,6 @@ def find_matching_spotify_track(
     duration_mismatch_penalty_threshold=10,
     duration_mismatch_penalty=0.10,
 ):
-    # ISRC short-circuit. Only fires for full Spotify track objects: the
-    # simplified objects in an album's track list carry no external_ids, so
-    # every caller that passes /albums/{id}/tracks output skips this.
-    if item.isrc:
-        for track in spotify_tracks:
-            if track.get("external_ids", {}).get("isrc", "").lower() == item.isrc.lower():
-                return track
-
     item_artist = item.artist or item.albumartist or ""
     best_track = None
     best_score = 0.0

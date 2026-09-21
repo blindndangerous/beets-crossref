@@ -38,10 +38,8 @@ touches the album. This is why beets 2.2 or newer is required: earlier releases 
 read its album's value for a field the item does not have.
 
 On a later run a stored album ID is re-checked by title and artist, and each
-stored track ID by its position on the album. ISRCs are compared only where
-Spotify supplies them, which is on track search results: the track list of an
-album comes back as simplified objects with no ISRC. Durations are used when
-scoring a match, not when verifying one.
+stored track ID by its position on the album. Durations are used when scoring
+a match, not when verifying one.
 
 IDs are validated before they are used or stored. Anything that is not exactly
 22 base62 characters is treated as absent: it is never sent to the Spotify API,

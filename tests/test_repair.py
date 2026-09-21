@@ -71,33 +71,9 @@ class EvaluateExistingTrackIdsTests(unittest.TestCase):
         self.assertIn(item, missing)
         self.assertEqual(total, 0)
 
-    def test_isrc_mismatch_flagged(self):
-        item = FakeItem("A", track=1, disc=1, isrc="USRC11111111")
-        item["spotify_track_id"] = "t1"
-        album = FakeAlbum("X", "Y", items=[item])
-        tracks = [{
-            "id": "t1", "disc_number": 1, "track_number": 1,
-            "external_ids": {"isrc": "USRC99999999"}, "duration_ms": 200000,
-        }]
-        mismatched, _missing, matched, _total = self._eval(album, tracks)
-        self.assertIn(item, mismatched)
-        self.assertEqual(matched, 0)
-
-    def test_matching_isrc_verifies(self):
-        item = FakeItem("A", track=1, disc=1, isrc="USRC11111111")
-        item["spotify_track_id"] = "t1"
-        album = FakeAlbum("X", "Y", items=[item])
-        tracks = [{
-            "id": "t1", "disc_number": 1, "track_number": 1,
-            "external_ids": {"isrc": "USRC11111111"}, "duration_ms": 200000,
-        }]
-        mismatched, _missing, matched, _total = self._eval(album, tracks)
-        self.assertEqual(mismatched, [])
-        self.assertEqual(matched, 1)
-
     def test_duration_mismatch_does_not_flag(self):
         # Duration differences between local files and Spotify are normal
-        # and do NOT indicate a wrong track ID — only disc/track/ISRC mismatches do.
+        # and do NOT indicate a wrong track ID — only disc/track mismatches do.
         item = FakeItem("A", track=1, disc=1, length=200.0)
         item["spotify_track_id"] = "t1"
         album = FakeAlbum("X", "Y", items=[item])

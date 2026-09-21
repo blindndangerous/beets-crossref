@@ -124,25 +124,16 @@ class AlbumRepairer:
     def evaluate_existing_track_ids(album, spotify_tracks):
         """Classify items into (mismatched, missing, matched_count, total_count).
 
-        - mismatched: stored ID is on this album but disc/track/ISRC disagree, OR not on this album
+        - mismatched: stored ID is on this album but disc/track disagree, OR not on this album
         - missing: item has no spotify_track_id stored
 
-        The ISRC comparison only has anything to compare when *spotify_tracks*
-        holds full track objects: an album's track list is made of simplified
-        objects, which carry no external_ids. Position is the signal that
-        actually runs here.
+        Position is the only signal available here: an album's track list comes
+        back as simplified objects, which carry no external_ids at all.
         """
-        track_map = {}
-        for track in spotify_tracks:
-            track_id = track.get('id')
-            if not track_id:
-                continue
-            track_isrc = track.get('external_ids', {}).get('isrc', '') or ''
-            track_map[track_id] = (
-                track.get('disc_number'),
-                track.get('track_number'),
-                track_isrc.lower(),
-            )
+        track_map = {
+            track['id']: (track.get('disc_number'), track.get('track_number'))
+            for track in spotify_tracks if track.get('id')
+        }
 
         mismatched_items = []
         missing_items = []
@@ -153,15 +144,11 @@ class AlbumRepairer:
             if existing_id:
                 total_ids += 1
                 if existing_id in track_map:
-                    disc_number, track_number, track_isrc = track_map[existing_id]
+                    disc_number, track_number = track_map[existing_id]
                     if item.disc and disc_number and item.disc != disc_number:
                         mismatched_items.append(item)
                         continue
                     if item.track and track_number and item.track != track_number:
-                        mismatched_items.append(item)
-                        continue
-                    item_isrc = (item.isrc or '').lower() if hasattr(item, 'isrc') else ''
-                    if item_isrc and track_isrc and item_isrc != track_isrc:
                         mismatched_items.append(item)
                         continue
                     matched_ids += 1

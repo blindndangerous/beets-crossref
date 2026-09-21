@@ -55,14 +55,13 @@ class _FakeModel:
 class FakeItem(_FakeModel):
     """Beets Item: flexible-field reads fall back to the item's album."""
 
-    def __init__(self, title, artist="", albumartist="", track=0, disc=0, isrc="", length=0.0):
+    def __init__(self, title, artist="", albumartist="", track=0, disc=0, length=0.0):
         super().__init__()
         self.title = title
         self.artist = artist
         self.albumartist = albumartist
         self.track = track
         self.disc = disc
-        self.isrc = isrc
         self.length = length
         # Set by FakeAlbum when the item is attached; beets calls it _cached_album.
         self._album = None

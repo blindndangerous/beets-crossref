@@ -11,7 +11,6 @@ from .cli import (
     default_progress_path,
     extract_spotify_album_id,
     load_progress,
-    parse_args,
     sanitize_progress_file_path,
     save_progress,
 )
@@ -80,7 +79,7 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
         )
 
         self._abort_requested = False
-        self._prompter = InteractivePrompter(on_abort=self._handle_user_abort)
+        self._prompter = InteractivePrompter()
         self.matcher = AlbumMatcher(self.client, self.config, prompter=self._prompter)
         self.repairer = AlbumRepairer(self.client, self.config, self.matcher, id_clearer=self)
 
@@ -119,7 +118,9 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
         if use_resume and completed_ids:
             log.info(f"Resuming: {len(completed_ids)} album(s) already completed.")
 
-        query = parse_args(args)
+        # beets.ui.decargs has been a no-op since Python 3 and is deprecated in
+        # beets 2.4.0, so the query arguments are passed straight through.
+        query = args or None
         provided_album_id = self._resolve_provided_album_id(opts)
         if provided_album_id is False:
             return  # invalid --sid value
@@ -414,10 +415,6 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
             log.info("Progress file cleared.")
         else:
             log.info("No progress file to clear.")
-
-    def _handle_user_abort(self):
-        self._abort_requested = True
-        self.client.abort()
 
     @staticmethod
     def _log_prefix(dry_run):

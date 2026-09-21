@@ -57,15 +57,6 @@ def build_subcommand(run_func):
     return cmd
 
 
-def parse_args(args):
-    """Return the beets query as given, or None when there is none.
-
-    beets.ui.decargs has been a no-op since Python 3 and is deprecated in
-    beets 2.4.0 (removed in 3.0), so the arguments are passed straight through.
-    """
-    return args or None
-
-
 SPOTIFY_URI_RE = re.compile(r"spotify:album:([A-Za-z0-9]{22})")
 SPOTIFY_URL_RE = re.compile(r"open\.spotify\.com/album/([A-Za-z0-9]{22})")
 
@@ -155,12 +146,9 @@ class InteractivePrompter:
 
     Signature when called: (candidates, local_album, local_items, build_candidate_fn) -> candidate | None.
 
-    Raises UserAbort if the user picks "abort" or hits Ctrl+C.
+    Raises UserAbort if the user picks "abort" or hits Ctrl+C; the caller
+    (plugin._run_spotify_match) turns that into an aborted run.
     """
-
-    def __init__(self, on_abort=None):
-        """`on_abort`, if provided, is called before raising UserAbort."""
-        self._on_abort = on_abort
 
     def __call__(self, candidates, local_album, local_items, build_candidate_fn):
         _ui_print("")
@@ -256,7 +244,6 @@ class InteractivePrompter:
             f"[{track_count} tracks, {release_date}, {pop_text}]"
         )
 
-    def _abort(self):
-        if self._on_abort is not None:
-            self._on_abort()
+    @staticmethod
+    def _abort():
         raise UserAbort("Aborted by user.")

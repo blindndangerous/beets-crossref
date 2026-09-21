@@ -102,23 +102,19 @@ class InteractivePrompterTests(unittest.TestCase):
         base.update(overrides)
         return base
 
-    def test_b_raises_user_abort_and_calls_on_abort(self):
-        on_abort = mock.Mock()
-        prompter = self.cli.InteractivePrompter(on_abort=on_abort)
+    def test_b_raises_user_abort(self):
+        prompter = self.cli.InteractivePrompter()
         local_album = FakeAlbum("Album", "Artist")
         with mock.patch("builtins.input", return_value="b"):
             with self.assertRaises(self.cli.UserAbort):
                 prompter([self._candidate()], local_album, [], lambda *a, **kw: None)
-        on_abort.assert_called_once()
 
     def test_ctrl_c_raises_user_abort(self):
-        on_abort = mock.Mock()
-        prompter = self.cli.InteractivePrompter(on_abort=on_abort)
+        prompter = self.cli.InteractivePrompter()
         local_album = FakeAlbum("Album", "Artist")
         with mock.patch("builtins.input", side_effect=KeyboardInterrupt):
             with self.assertRaises(self.cli.UserAbort):
                 prompter([self._candidate()], local_album, [], lambda *a, **kw: None)
-        on_abort.assert_called_once()
 
     def test_skip_returns_none(self):
         prompter = self.cli.InteractivePrompter()
