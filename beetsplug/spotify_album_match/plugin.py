@@ -36,7 +36,6 @@ CONFIG_DEFAULTS = {
     'match_threshold': 0.90,
     'certainty_margin': 0.15,
     'duration_tolerance': 3,                  # seconds
-    'cache_ttl': 600,                         # cache API results for 10 minutes
     'track_match_threshold': 0.90,
     'min_track_artist_score': 0.90,
     'min_request_interval': 3.0,              # seconds between Spotify API calls
@@ -79,7 +78,6 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
             retry_delay=self.config['retry_delay'].get(int),
             stop_on_rate_limit=self.config['stop_on_rate_limit'].get(bool),
             min_request_interval=self.config['min_request_interval'].get(float),
-            cache_ttl=self.config['cache_ttl'].get(int),
         )
 
         self._abort_requested = False

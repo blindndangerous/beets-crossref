@@ -1,9 +1,9 @@
-"""pytest collection-time setup: install beets/spotipy/cachetools stubs once.
+"""pytest collection-time setup: install beets/spotipy stubs once.
 
 Importing beetsplug.spotify_album_match triggers __init__.py, which loads the
-full plugin module. That requires beets/spotipy/cachetools at import time. We
-inject lightweight stubs before pytest collects any test module that imports
-from the package.
+full plugin module. That requires beets and spotipy at import time. We inject
+lightweight stubs before pytest collects any test module that imports from
+the package.
 """
 import pathlib
 import sys

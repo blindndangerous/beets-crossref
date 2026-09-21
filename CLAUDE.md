@@ -13,8 +13,8 @@ A beets plugin that matches local albums and tracks to Spotify, writing `spotify
 - Python 3 (developed against 3.13, `requires-python >= 3.10`, the floor beets 2.2 needs)
 - beets plugin API (`BeetsPlugin`, `Subcommand`); beets >= 2.2 (needs `Album.store(inherit=...)`)
 - Spotify Web API via `spotipy`
-- `cachetools` for TTL caches, `thefuzz` for fuzzy matching (both hard deps)
-- `pytest` for tests; `beets`/`spotipy`/`cachetools` are stubbed in the suite, `requests`
+- `thefuzz` for fuzzy matching (a hard dep)
+- `pytest` for tests; `beets` and `spotipy` are stubbed in the suite, `requests`
   and `thefuzz` are real
 - `ruff` for lint, configured in `pyproject.toml`: `python -m ruff check beetsplug tests`
 
@@ -63,7 +63,7 @@ python -m pytest -q
 ```
 
 `beets` does not need to be installed: `tests/conftest.py` installs stub
-`beets`/`spotipy`/`cachetools` modules before collection.
+`beets` and `spotipy` modules before collection.
 
 ## Layout
 
@@ -81,7 +81,7 @@ Package modules:
 - `cli.py` — Subcommand registration, options, progress file, interactive prompter
 - `matching.py` — `AlbumMatcher`: search, candidate building/selection, track matching
 - `repair.py` — `AlbumRepairer`: verify existing IDs, repair from related releases
-- `client.py` — `SpotifyClient`: caching, rate-limiting, retries
+- `client.py` — `SpotifyClient`: caching, rate-limiting, retries (single-threaded)
 - `helpers.py` — beets-free helpers (importable without beets): fuzzy scoring, query
   building, `clean_spotify_id`, and the artist-ID field writers
 
@@ -92,7 +92,7 @@ Test files:
   `test_artist_id.py`
 - `fakes.py` — shared `FakeItem` / `FakeAlbum`, modelling the beets album fallback
   (an item's `get` / `in` / `[]` fall through to its album; `del` does not)
-- `plugin_test_utils.py` — beets/spotipy/cachetools stubs
+- `plugin_test_utils.py` — beets/spotipy stubs
 - `conftest.py` — installs stubs before collection
 
 ## Configuration Reference
@@ -112,7 +112,6 @@ All keys go under `spotify_album_match:` in `config.yaml`.
   installs no Retry adapter of its own; without that every 5xx arrives as a header-less 429.
 - `retry_delay` (default `5`) — base seconds between retries.
 - `stop_on_rate_limit` (default `true`) — on HTTP 429, abort the run. Set `false` to wait Retry-After and continue.
-- `cache_ttl` (default `600`) — seconds to cache Spotify API responses in memory.
 
 ### Album Matching
 

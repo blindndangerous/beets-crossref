@@ -22,8 +22,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[test]"
       - name: Import the plugin against the real dependencies
-        # The suite runs on stubs, so a broken import of beets, spotipy,
-        # cachetools or requests would otherwise reach a user before CI.
+        # The suite runs on stubs, so a broken import of beets, spotipy or
+        # requests would otherwise reach a user before CI.
         run: python -c "import beetsplug.spotify_album_match"
       - name: Test
         run: python -m pytest -q

@@ -123,7 +123,6 @@ API and rate limiting:
 - `max_retries` (`5`) — retry attempts on transient errors: HTTP 5xx, timeouts and connection failures
 - `retry_delay` (`5`) — base seconds between retries
 - `stop_on_rate_limit` (`true`) — abort the run on HTTP 429; set `false` to honour `Retry-After` and continue
-- `cache_ttl` (`600`) — seconds to keep Spotify responses in the in-memory cache
 
 Album matching:
 
@@ -163,9 +162,8 @@ Run the test suite from the repository root:
 python -m pytest -q
 ```
 
-The suite stubs `beets`, `spotipy`, and `cachetools`, so it runs without beets
-installed and without touching the network. `requests` and `thefuzz` are used
-for real.
+The suite stubs `beets` and `spotipy`, so it runs without beets installed and
+without touching the network. `requests` and `thefuzz` are used for real.
 
 Lint with the repository's own rule set:
 

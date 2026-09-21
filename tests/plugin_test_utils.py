@@ -1,5 +1,5 @@
-"""Test infrastructure: stub beets/spotipy/cachetools so the plugin can be
-imported without the real packages, then load the package once per process.
+"""Test infrastructure: stub beets/spotipy so the plugin can be imported
+without the real packages, then load the package once per process.
 """
 import importlib
 import pathlib
@@ -7,7 +7,7 @@ import sys
 import types
 
 # ---------------------------------------------------------------------------
-# Stub beets, spotipy, cachetools
+# Stub beets and spotipy
 # ---------------------------------------------------------------------------
 
 class ConfigTypeError(Exception):
@@ -149,16 +149,6 @@ def _build_stub_modules():
     spotipy_exceptions.SpotifyException = SpotifyException
     spotipy_cache_handler.MemoryCacheHandler = MemoryCacheHandler
 
-    cachetools_module = types.ModuleType("cachetools")
-
-    class TTLCache(dict):
-        def __init__(self, maxsize=0, ttl=0):
-            super().__init__()
-            self.maxsize = maxsize
-            self.ttl = ttl
-
-    cachetools_module.TTLCache = TTLCache
-
     return {
         "beets": beets_module,
         "beets.plugins": beets_plugins,
@@ -169,7 +159,6 @@ def _build_stub_modules():
         "spotipy.oauth2": spotipy_oauth2,
         "spotipy.exceptions": spotipy_exceptions,
         "spotipy.cache_handler": spotipy_cache_handler,
-        "cachetools": cachetools_module,
     }
 
 

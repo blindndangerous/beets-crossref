@@ -17,7 +17,6 @@ authors = [
 dependencies = [
     "beets>=2.2",
     "spotipy>=2.22",
-    "cachetools>=5",
     "thefuzz>=0.20",
     "requests>=2.25",
 ]

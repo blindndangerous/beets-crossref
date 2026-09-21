@@ -4,11 +4,9 @@ All Spotify API concerns (authentication, throttling, pagination, caching)
 live here so the matching layer can focus on music logic.
 """
 import logging
-import threading
 import time
 
 import requests
-from cachetools import TTLCache
 from spotipy import Spotify
 from spotipy.cache_handler import MemoryCacheHandler
 from spotipy.exceptions import SpotifyException
@@ -26,8 +24,9 @@ class RateLimitAbort(Exception):
 class SpotifyClient:
     """Wraps spotipy.Spotify with caching, rate-limiting, and retry logic.
 
-    The cache and request locks are held for a possible future concurrent
-    caller; every caller today is single-threaded.
+    Not thread-safe, and does not need to be: every caller is a single beets
+    command walking one album at a time. The caches live for the length of a
+    run and are thrown away with the client.
     """
 
     def __init__(
@@ -39,7 +38,6 @@ class SpotifyClient:
         retry_delay=5,
         stop_on_rate_limit=True,
         min_request_interval=5.0,
-        cache_ttl=600,
     ):
         self._spotify = self._build_spotify(client_id, client_secret)
         self.max_retries = max_retries
@@ -47,13 +45,11 @@ class SpotifyClient:
         self.stop_on_rate_limit = stop_on_rate_limit
         self.min_request_interval = max(0.0, min_request_interval)
 
-        self._album_tracks_cache = TTLCache(maxsize=512, ttl=cache_ttl)
-        self._album_details_cache = TTLCache(maxsize=512, ttl=cache_ttl)
-        # Search results cached with a shorter TTL to deduplicate repeated queries
-        # within a single run (related-release repair re-runs the same album searches).
-        self._search_cache = TTLCache(maxsize=256, ttl=min(cache_ttl, 300))
-        self._cache_lock = threading.Lock()
-        self._request_lock = threading.Lock()
+        self._album_tracks_cache = {}
+        self._album_details_cache = {}
+        # Deduplicates repeated queries within a run (related-release repair
+        # re-runs the same album searches).
+        self._search_cache = {}
         self._next_request_time = 0.0
         self._rate_limit_until = 0.0
         self._abort_requested = False
@@ -85,8 +81,7 @@ class SpotifyClient:
         if not album_id:
             log.warning("Skipping Spotify album track lookup for blank/malformed album ID.")
             return []
-        with self._cache_lock:
-            cached = self._album_tracks_cache.get(album_id)
+        cached = self._album_tracks_cache.get(album_id)
         if cached is not None:
             log.debug(f"Cache HIT for album ID: {album_id}")
             return cached
@@ -102,8 +97,7 @@ class SpotifyClient:
                 results = self._retry_request(self._spotify.next, results)
                 if results:
                     all_tracks.extend(results['items'])
-            with self._cache_lock:
-                self._album_tracks_cache[album_id] = all_tracks
+            self._album_tracks_cache[album_id] = all_tracks
             return all_tracks
         except SpotifyException as e:
             log.warning(f"Could not fetch tracks for album ID {album_id}: {e}")
@@ -138,13 +132,12 @@ class SpotifyClient:
 
         details_by_id = {}
         uncached_ids = []
-        with self._cache_lock:
-            for album_id in unique_ids:
-                cached = self._album_details_cache.get(album_id)
-                if cached is not None:
-                    details_by_id[album_id] = cached
-                else:
-                    uncached_ids.append(album_id)
+        for album_id in unique_ids:
+            cached = self._album_details_cache.get(album_id)
+            if cached is not None:
+                details_by_id[album_id] = cached
+            else:
+                uncached_ids.append(album_id)
 
         if uncached_ids:
             log.debug(f"Bulk-fetching {len(uncached_ids)} album(s) not in cache.")
@@ -164,28 +157,24 @@ class SpotifyClient:
                 if not album_id:
                     continue
                 details_by_id[album_id] = album
-                with self._cache_lock:
-                    self._album_details_cache[album_id] = album
+                self._album_details_cache[album_id] = album
                 tracks = album.get('tracks', {})
                 if tracks and isinstance(tracks, dict):
                     items = tracks.get('items', [])
                     if items and not tracks.get('next'):
-                        with self._cache_lock:
-                            self._album_tracks_cache[album_id] = items
+                        self._album_tracks_cache[album_id] = items
         return details_by_id
 
     def search(self, **kwargs):
-        """Call spotify.search with retry and TTL-cached deduplication."""
+        """Call spotify.search with retry and per-run cached deduplication."""
         cache_key = "|".join(f"{k}={v}" for k, v in sorted(kwargs.items()))
-        with self._cache_lock:
-            cached = self._search_cache.get(cache_key)
+        cached = self._search_cache.get(cache_key)
         if cached is not None:
             log.debug(f"Search cache HIT for key: {cache_key!r}")
             return cached
         result = self._retry_request(self._spotify.search, **kwargs)
         if result is not None:
-            with self._cache_lock:
-                self._search_cache[cache_key] = result
+            self._search_cache[cache_key] = result
         return result
 
     # ------------------------------------------------------------------
@@ -263,13 +252,12 @@ class SpotifyClient:
         while True:
             if self._abort_requested:
                 raise RateLimitAbort("Aborting run due to rate limit.")
-            with self._request_lock:
-                now = time.monotonic()
-                wait_until = max(self._rate_limit_until, self._next_request_time)
-                if now >= wait_until:
-                    self._next_request_time = now + self.min_request_interval
-                    return
-                sleep_for = wait_until - now
+            now = time.monotonic()
+            wait_until = max(self._rate_limit_until, self._next_request_time)
+            if now >= wait_until:
+                self._next_request_time = now + self.min_request_interval
+                return
+            sleep_for = wait_until - now
             if sleep_for > 0:
                 log.debug(f"Throttling Spotify requests for {sleep_for:.2f}s.")
                 time.sleep(sleep_for)
@@ -277,14 +265,12 @@ class SpotifyClient:
     def _set_rate_limit(self, retry_after):
         if retry_after <= 0:
             return
-        with self._request_lock:
-            until = time.monotonic() + retry_after
-            if until > self._rate_limit_until:
-                self._rate_limit_until = until
+        until = time.monotonic() + retry_after
+        if until > self._rate_limit_until:
+            self._rate_limit_until = until
 
     def _cached_api_get(self, cache, key, fetch_fn, error_label):
-        with self._cache_lock:
-            cached = cache.get(key)
+        cached = cache.get(key)
         if cached is not None:
             return cached
         try:
@@ -293,6 +279,5 @@ class SpotifyClient:
             log.warning(f"Could not fetch {error_label} {key}: {e}")
             return None
         if result is not None:
-            with self._cache_lock:
-                cache[key] = result
+            cache[key] = result
         return result
