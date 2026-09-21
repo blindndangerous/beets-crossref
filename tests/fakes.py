@@ -94,16 +94,13 @@ class FakeItem(_FakeModel):
 class FakeAlbum(_FakeModel):
     _next_id = 1
 
-    def __init__(self, album, albumartist, year=0, items=None, barcode=""):
+    def __init__(self, album, albumartist, year=0, items=None):
         super().__init__()
         self.id = FakeAlbum._next_id
         FakeAlbum._next_id += 1
         self.album = album
         self.albumartist = albumartist
         self.year = year
-        # beets albums have a fixed 'barcode' field, defaulting to the empty
-        # string, and no 'upc' field at all (beets 2.2.0 library.py:1188).
-        self.barcode = barcode
         self._items = []
         for item in items or []:
             self.add_item(item)

@@ -151,10 +151,6 @@ Album score weights (sum to 1.0):
 - `existing_id_mismatch_threshold` (default `0.3`) — max fraction of mismatched track IDs before whole album is re-searched.
 - `existing_album_repair_strategy` (default `related_release`) — either `strict` or `related_release`.
 
-### Experimental
-
-- `use_upc_lookup` (default `false`) — experimental barcode lookup before the text search.
-
 ### Clearing Stale IDs
 
 - `clear_unmatched_track_ids` (default `true`) — clear `spotify_track_id` for tracks that could not be matched after a successful album match.
@@ -162,15 +158,12 @@ Album score weights (sum to 1.0):
 
 ## How Matching Works
 
-1. Barcode check — only when `use_upc_lookup` is on (default off, experimental). Searches
-   Spotify by UPC; the hit is accepted only if title*0.6 + artist*0.4 clears
-   `existing_album_validation_threshold`. Caveats in README.
-2. Album search — build multiple query variants (full title+artist, stripped title, primary artist) and collect distinct results.
-3. Candidate scoring — weighted composite (see Composite Scoring above).
-4. Selection — accept if `score >= match_threshold` or clear winner by `certainty_margin`. Prefer standard editions over variants when scores close. `--interactive` to pick manually.
-5. Track matching — match each local track to the winning album's tracks via fuzzy title+artist+duration.
-6. Related-release repair — unmatched tracks (e.g. bonus) searched against variant/deluxe editions.
-7. Verification on subsequent runs — validate stored album by title+artist; if wrong, clear
+1. Album search — build multiple query variants (full title+artist, stripped title, primary artist) and collect distinct results.
+2. Candidate scoring — weighted composite (see Composite Scoring above).
+3. Selection — accept if `score >= match_threshold` or clear winner by `certainty_margin`. Prefer standard editions over variants when scores close. `--interactive` to pick manually.
+4. Track matching — match each local track to the winning album's tracks via fuzzy title+artist+duration.
+5. Related-release repair — unmatched tracks (e.g. bonus) searched against variant/deluxe editions.
+6. Verification on subsequent runs — validate stored album by title+artist; if wrong, clear
    and re-search. Otherwise verify track positions and repair only what's off. ISRC comparison
    is written for full track objects; an album's track list is simplified objects with no
    `external_ids`, so on that path only position is checked. Durations are scored, not verified.

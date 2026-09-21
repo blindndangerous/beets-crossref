@@ -69,26 +69,6 @@ def clean_spotify_id(value):
     return None
 
 
-def album_barcode(local_album):
-    """Return a beets album's barcode as a plain string, or None.
-
-    beets stores it in the fixed 'barcode' field (beets 2.2.0 library.py:1188);
-    there is no 'upc' field, so a value under that name can only be one a user
-    added by hand.
-    """
-    values = [getattr(local_album, 'barcode', None)]
-    getter = getattr(local_album, 'get', None)
-    if callable(getter):
-        values.append(getter('upc'))
-    for value in values:
-        if value is None:
-            continue
-        text = str(value).strip()
-        if text:
-            return text
-    return None
-
-
 def primary_artist_id(spotify_obj):
     """Return the cleaned Spotify ID of an album's or track's primary artist.
 

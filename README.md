@@ -3,9 +3,9 @@
 A [beets](https://beets.io/) plugin that matches the albums and tracks in your
 library to Spotify and stores the resulting Spotify IDs on your items.
 
-For each album it searches Spotify (by title and artist, or by barcode first if
-you turn on the experimental `use_upc_lookup`), scores the candidates with a weighted fuzzy match, picks a
-winner, and then maps each local track onto a Spotify track. On later runs it
+For each album it searches Spotify by title and artist, scores the candidates
+with a weighted fuzzy match, picks a winner, and then maps each local track
+onto a Spotify track. On later runs it
 verifies the IDs it already stored, repairs the ones that drifted (bonus tracks,
 deluxe editions), and clears the ones that are wrong.
 
@@ -158,12 +158,6 @@ Album matching:
 - `related_artist_threshold` (`0.90`) — minimum artist score for a result to count as a related or variant release
 - `min_related_release_artist_score` (`0.85`) — minimum artist score when collecting related releases for bonus tracks
 - `min_preliminary_artist_score` (`0.20`) — hard floor at the quick-filter stage, applied before any track-level API calls
-- `use_upc_lookup` (`false`) — **experimental.** Search by the album's `barcode` field before
-  searching by title and artist. The single hit is accepted only if it scores at least
-  `existing_album_validation_threshold` on title and artist, but that gate is weaker than it
-  looks: title scoring uses a partial ratio, so a superset title such as "Greatest Hits"
-  scores a perfect match against "Hits", and an album with an empty `albumartist` scores 0
-  on artist and can never pass. Try it with `--dry-run` before trusting it
 
 Track matching:
 

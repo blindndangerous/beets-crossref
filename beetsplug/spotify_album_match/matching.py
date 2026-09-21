@@ -1,7 +1,7 @@
 """Album and track matching against Spotify.
 
 The AlbumMatcher class owns:
-    - Album candidate search (by UPC, then text queries)
+    - Album candidate search by text query
     - Candidate scoring and selection (with optional interactive disambiguation)
     - Mapping the local items of an album onto that album's Spotify tracks
 """
@@ -10,7 +10,6 @@ import logging
 from spotipy.exceptions import SpotifyException
 
 from .helpers import (
-    album_barcode,
     artist_set_score,
     build_album_search_queries,
     calculate_match_score,
@@ -45,17 +44,9 @@ class AlbumMatcher:
     def find_best_album_match(self, local_album, interactive):
         """Return (selected_album_dict_or_None, supplemental_candidates).
 
-        Tries the barcode when `use_upc_lookup` is on, then text-search
-        candidates. Selection considers title/artist scores, popularity, and
+        Selection considers title/artist scores, popularity, and
         variant-vs-standard preference.
         """
-        if self.config['use_upc_lookup'].get(bool):
-            barcode = album_barcode(local_album)
-            if barcode:
-                upc_match = self._search_by_upc(local_album, barcode)
-                if upc_match:
-                    return upc_match, []
-
         candidates_by_id = self._search_album_candidates(local_album)
         if not candidates_by_id:
             return None, []
@@ -67,48 +58,6 @@ class AlbumMatcher:
             return None, []
 
         return self._select_album_candidate(local_album, local_items, candidates, interactive)
-
-    def _search_by_upc(self, local_album, barcode):
-        """Return the Spotify album for a barcode, or None.
-
-        Experimental, off by default (`use_upc_lookup`). The hit is checked
-        against the local title and artist before it is trusted: a barcode
-        search returns exactly one release and a mistagged barcode would
-        otherwise be accepted with no evidence at all. That check is not
-        airtight: `fuzzy_title_score` uses partial_ratio, so a superset title
-        such as "Greatest Hits" scores 1.0 against "Hits", and an album with an
-        empty albumartist scores 0 on artist and can never clear the gate.
-        """
-        query = f'upc:{barcode}'
-        log.info(f"  -> Searching Spotify by UPC: {query}")
-        try:
-            results = self.client.search(q=query, type='album', limit=1)
-        except SpotifyException:
-            log.warning("  -> Searching by UPC failed. Falling back to search.")
-            return None
-
-        items = results.get("albums", {}).get("items", []) if isinstance(results, dict) else []
-        sp_album = items[0] if items else None
-        if not sp_album or not isinstance(sp_album, dict):
-            return None
-
-        title_score = fuzzy_title_score(local_album.album, sp_album.get('name', ''))
-        artist_score = artist_set_score(
-            local_album.albumartist,
-            [artist.get('name', '') for artist in sp_album.get('artists', [])],
-        )
-        validation_score = (title_score * 0.6) + (artist_score * 0.4)
-        threshold = self.config['existing_album_validation_threshold'].as_number()
-        if validation_score < threshold:
-            log.warning(
-                f"  -> UPC hit '{sp_album.get('name', '')}' does not match "
-                f"'{local_album.album}' (score {validation_score:.2f} < "
-                f"{threshold:.2f}). Falling back to search."
-            )
-            return None
-
-        log.info(f"  -> Found direct match via UPC for '{local_album.album}'")
-        return sp_album
 
     def build_candidate_from_album_id(self, album_id, local_album, local_items):
         """Build a candidate dict from a known Spotify album ID (for --sid / interactive)."""
