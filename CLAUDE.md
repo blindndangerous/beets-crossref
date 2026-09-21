@@ -14,8 +14,8 @@ A beets plugin that matches local albums and tracks to Spotify, writing `spotify
 - beets plugin API (`BeetsPlugin`, `Subcommand`); beets >= 2.2 (needs `Album.store(inherit=...)`)
 - Spotify Web API via `spotipy`
 - `thefuzz` for fuzzy matching (a hard dep)
-- `pytest` for tests; `beets` and `spotipy` are stubbed in the suite, `requests`
-  and `thefuzz` are real
+- `pytest` for tests, run against the real `beets`, `spotipy`, `requests` and
+  `thefuzz` (`pip install -e ".[test]"`)
 - `ruff` for lint, configured in `pyproject.toml`: `python -m ruff check beetsplug tests`
 
 ## Run
@@ -34,11 +34,16 @@ Configuration keys, defaults, CLI options and the scoring weights are documented
 ## Test
 
 ```bash
+pip install -e ".[test]"
 python -m pytest -q
 ```
 
-`beets` does not need to be installed: `tests/conftest.py` installs stub
-`beets` and `spotipy` modules before collection.
+The suite needs the real dependencies installed. Tests that need a plugin,
+album or item subclass `beets.test.helper.PluginTestCase` with
+`plugin = "spotify_album_match"`, which gives a temporary library
+(`self.lib`), a temporary confuse config (`self.config`) and the loaded plugin
+from `beets.plugins.find_plugins()`. Every test patches `plugin.client`, so
+nothing reaches the network.
 
 ## Layout
 
@@ -65,10 +70,6 @@ Test files:
 - `test_plugin.py`, `test_matching.py`, `test_repair.py`, `test_cli.py`,
   `test_client.py`, `test_helpers.py`, `test_spotify_id_safety.py`,
   `test_artist_id.py`
-- `fakes.py` — shared `FakeItem` / `FakeAlbum`, modelling the beets album fallback
-  (an item's `get` / `in` / `[]` fall through to its album; `del` does not)
-- `plugin_test_utils.py` — beets/spotipy stubs
-- `conftest.py` — installs stubs before collection
 
 ## How Matching Works
 

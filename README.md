@@ -169,14 +169,18 @@ A stored album ID is verified against a simpler score, title * 0.6 + artist *
 
 ## Development
 
-Run the test suite from the repository root:
+Install the package with its test dependencies, then run the suite from the
+repository root:
 
 ```bash
+pip install -e ".[test]"
 python -m pytest -q
 ```
 
-The suite stubs `beets` and `spotipy`, so it runs without beets installed and
-without touching the network. `requests` and `thefuzz` are used for real.
+The suite needs the real `beets`, `spotipy`, `requests` and `thefuzz`. Tests
+that need a plugin, album or item use `beets.test.helper.PluginTestCase`,
+which hands each test a temporary beets library and configuration. Nothing
+touches the network: every test patches the Spotify client.
 
 Lint with the repository's own rule set:
 
@@ -184,8 +188,7 @@ Lint with the repository's own rule set:
 python -m ruff check beetsplug tests
 ```
 
-CI runs both on Python 3.10 and 3.13, and additionally imports the package
-against the real dependencies so a broken import cannot pass on stubs alone.
+CI runs both on Python 3.10 and 3.13.
 
 ## License
 
