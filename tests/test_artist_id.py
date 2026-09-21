@@ -223,29 +223,6 @@ class AlbumMatchWritesArtistIdTests(unittest.TestCase):
         self.assertEqual(item.get("spotify_track_id"), TRACK_ID_1)
         self.assertEqual(own_artist_id(item), ARTIST_TRACK_1)
 
-    def test_fallback_track_search_stores_item_and_album_artist_ids(self):
-        item = FakeItem("Song A", artist="Artist", albumartist="Artist")
-        album = FakeAlbum("Album", "Artist", items=[item])
-        match = {
-            "id": TRACK_ID_1,
-            "artists": [{"id": ARTIST_TRACK_1, "name": "Artist"}],
-            "album": {
-                "id": CONSENSUS_ALBUM_ID, "name": "Album",
-                "artists": [{"id": ARTIST_ALBUM, "name": "Artist"}],
-            },
-        }
-
-        with mock.patch.object(self.plugin.matcher, "search_spotify_track",
-                               return_value=match):
-            self.plugin.repairer.fallback_track_search(
-                album, [item], dry_run=False, overwrite=True,
-            )
-
-        self.assertEqual(item.get("spotify_track_id"), TRACK_ID_1)
-        self.assertEqual(item.get("spotify_artist_id"), ARTIST_TRACK_1)
-        self.assertEqual(album.get("spotify_album_id"), CONSENSUS_ALBUM_ID)
-        self.assertEqual(album.get("spotify_artist_id"), ARTIST_ALBUM)
-
     def test_missing_or_malformed_artists_stores_ids_without_artist_id(self):
         item1 = FakeItem("Track 1", artist="Artist", albumartist="Artist",
                          track=1, disc=1, length=180.0)

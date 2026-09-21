@@ -3,7 +3,6 @@
 The AlbumRepairer class owns:
     - Verifying that a stored spotify_album_id is still correct
     - Detecting which tracks need re-mapping vs. fresh tagging
-    - Falling back to per-track search and computing album consensus
     - Trying related releases (deluxe / remaster / etc.) to fill orphans
 """
 import logging
@@ -16,11 +15,11 @@ from .helpers import (
 
 log = logging.getLogger("beets.spotify_album_match")
 
-VALID_REPAIR_STRATEGIES = {"strict", "related_release", "global_fallback"}
+VALID_REPAIR_STRATEGIES = {"strict", "related_release"}
 
 
 class AlbumRepairer:
-    """Verify stored Spotify IDs and repair via related releases or per-track fallback."""
+    """Verify stored Spotify IDs and repair them from related releases."""
 
     def __init__(self, client, config, matcher, id_clearer):
         """
@@ -176,34 +175,7 @@ class AlbumRepairer:
     def apply_repair_strategy(self, album, unresolved, existing_album_id, dry_run):
         """Apply the configured repair strategy to items not matched by the stored album."""
         log_prefix = "[DRY RUN] " if dry_run else ""
-        strategy = self.get_repair_strategy()
-        if strategy == "global_fallback":
-            if not self.config['use_track_fallback'].get(bool):
-                log.warning(
-                    f"{log_prefix}Remaining unmatched track(s): {len(unresolved)}. "
-                    "Track fallback is disabled (use_track_fallback=false). Skipping."
-                )
-                return
-            log.info(
-                f"{log_prefix}Remaining unmatched track(s): {len(unresolved)}. "
-                "Falling back to track-level search."
-            )
-            fallback_result = self.fallback_track_search(
-                album, unresolved, dry_run, overwrite=True,
-            )
-            current_album_id = fallback_result.get("new_album_id") or album.get('spotify_album_id')
-            if current_album_id and fallback_result.get("album_id_changed"):
-                log.info(
-                    f"{log_prefix}Consensus changed album ID. "
-                    "Filling any remaining untagged tracks from new album."
-                )
-                self.matcher.match_items_to_tracks(
-                    list(album.items()),
-                    self.client.get_album_tracks(current_album_id) or [],
-                    dry_run,
-                    overwrite=False,
-                )
-        elif strategy == "related_release":
+        if self.get_repair_strategy() == "related_release":
             log.info(
                 f"{log_prefix}Remaining unmatched track(s): {len(unresolved)}. "
                 "Trying related releases by albumartist/title."
@@ -218,7 +190,7 @@ class AlbumRepairer:
         else:
             log.warning(
                 f"{log_prefix}Remaining unmatched track(s): {len(unresolved)}. "
-                "Skipping track fallback in strict repair mode."
+                "Skipping related releases in strict repair mode."
             )
             self.id_clearer.clear_track_ids(unresolved, dry_run)
 
@@ -274,87 +246,3 @@ class AlbumRepairer:
                 return []
 
         return remaining
-
-    def fallback_track_search(self, album, items, dry_run, *, overwrite=False, strict_artist=False):
-        """Search Spotify track-by-track and compute album consensus.
-
-        Returns a dict with keys:
-            matched: number of tracks that found a Spotify match
-            album_id_changed: True if consensus identified a different album than stored
-            new_album_id: the album ID after consensus (may equal existing)
-            consensus_album_obj: the Spotify album object from the consensus track (or None)
-        """
-        if not items:
-            return {
-                "matched": 0,
-                "album_id_changed": False,
-                "new_album_id": album.get('spotify_album_id'),
-                "consensus_album_obj": None,
-            }
-
-        log_prefix = "[DRY RUN] " if dry_run else ""
-        log.info(f"{log_prefix}Attempting track-level search fallback for '{album.album}'.")
-
-        min_artist_override = None
-        if strict_artist:
-            min_artist_override = self.config['min_no_album_track_artist_score'].as_number()
-
-        album_hits = {}  # {album_id: {'count': N, 'obj': album_dict}}
-        matched = 0
-        for item in items:
-            existing_id = item.get('spotify_track_id')
-            if existing_id and not overwrite:
-                continue
-            match = self.matcher.search_spotify_track(item, album, min_artist_score=min_artist_override)
-            if match:
-                matched += 1
-                new_id = match['id']
-                action = "Updated" if existing_id and existing_id != new_id else "Matched"
-                log.info(f"  -> {log_prefix}{action} '{item.title}' -> Spotify ID: {new_id}")
-                if not dry_run:
-                    item['spotify_track_id'] = new_id
-                    set_artist_id(item, match, label=item.title)
-                    item.store()
-                album_id = match.get('album', {}).get('id')
-                if album_id:
-                    if album_id not in album_hits:
-                        album_hits[album_id] = {'count': 0, 'obj': match.get('album', {})}
-                    album_hits[album_id]['count'] += 1
-            else:
-                log.warning(f"  -> No Spotify match found for track: '{item.title}'")
-
-        existing_album_id = album.get('spotify_album_id')
-        album_id_changed = False
-        new_album_id = existing_album_id
-        consensus_album_obj = None
-        consensus_ratio = self.config['fallback_consensus_ratio'].as_number()
-        if matched and album_hits:
-            best_album_id, best_data = max(album_hits.items(), key=lambda x: x[1]['count'])
-            best_count = best_data['count']
-            if best_count / matched >= consensus_ratio:
-                consensus_album_obj = best_data['obj']
-                if existing_album_id != best_album_id:
-                    album_id_changed = True
-                    new_album_id = best_album_id
-                if existing_album_id and existing_album_id != best_album_id:
-                    log.info(
-                        f"{log_prefix}Updating Spotify album ID based on track consensus: "
-                        f"{existing_album_id} -> {best_album_id}"
-                    )
-                elif not existing_album_id:
-                    log.info(
-                        f"{log_prefix}Setting Spotify album ID based on track consensus: {best_album_id}"
-                    )
-                if not dry_run:
-                    album['spotify_album_id'] = best_album_id
-                    set_artist_id(album, consensus_album_obj, label=album.album)
-                    album.store(inherit=False)
-                else:
-                    new_album_id = best_album_id
-
-        return {
-            "matched": matched,
-            "album_id_changed": album_id_changed,
-            "new_album_id": new_album_id,
-            "consensus_album_obj": consensus_album_obj,
-        }

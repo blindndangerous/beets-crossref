@@ -17,10 +17,8 @@ from .cli import (
 )
 from .client import RateLimitAbort, SpotifyClient
 from .helpers import (
-    artist_set_score,
     clean_spotify_id,
     discard_artist_id,
-    fuzzy_title_score,
     own_artist_id,
     primary_artist_id,
     set_artist_id,
@@ -51,18 +49,13 @@ CONFIG_DEFAULTS = {
     'existing_album_repair_strategy': 'related_release',
     'min_related_release_artist_score': 0.85,
     'related_artist_threshold': 0.90,
-    'min_no_album_track_artist_score': 0.75,
     'min_preliminary_artist_score': 0.20,
     'clear_unmatched_track_ids': True,
     'clear_on_no_match': True,
-    'fallback_album_validation_threshold': 0.90,  # min title+artist score for consensus album
-    'fallback_consensus_ratio': 0.6,              # fraction of matched tracks needed for consensus
     'duration_mismatch_penalty_threshold': 10,    # seconds; diff above this applies a score penalty
     'duration_mismatch_penalty': 0.10,            # penalty subtracted from score on large diff
     'existing_album_validation_threshold': 0.90,  # min score for stored album to pass identity check
-    'use_track_fallback': False,                  # enable track-level search when no album match
     'use_upc_lookup': False,                      # experimental: search by the album's barcode first
-    'max_track_search_queries': 3,                # max query variants per track (0 = unlimited)
 }
 
 
@@ -225,7 +218,7 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
 
         spotify_album, supplemental_candidates = self.matcher.find_best_album_match(album, interactive)
         if not spotify_album:
-            self._handle_no_album_match(album, dry_run, interactive, force, log_prefix)
+            self._handle_no_album_match(album, dry_run, interactive, log_prefix)
             return
 
         log.info(f"{log_prefix}Found best match: '{spotify_album['name']}' ({spotify_album['id']})")
@@ -256,64 +249,20 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
 
         log.debug(f"API calls for album '{album.album}': {self.client.api_call_count}")
 
-    def _handle_no_album_match(self, album, dry_run, interactive, force, log_prefix):
+    def _handle_no_album_match(self, album, dry_run, interactive, log_prefix):
         if interactive:
             log.warning(f"Could not find a good Spotify match for '{album.album}'. Skipping.")
-            return
-
-        if self.config['use_track_fallback'].get(bool):
+        elif self.config['clear_on_no_match'].get(bool):
             log.warning(
-                f"Could not find a good Spotify match for '{album.album}'. "
-                "Falling back to track-level search."
+                f"{log_prefix}No Spotify album match found for '{album.album}'. "
+                "Clearing all Spotify IDs (clear_on_no_match=true)."
             )
-            fallback_result = self.repairer.fallback_track_search(
-                album, list(album.items()), dry_run, overwrite=force, strict_artist=True,
-            )
-            consensus_album_obj = fallback_result.get("consensus_album_obj")
-            if consensus_album_obj:
-                title_score = fuzzy_title_score(album.album, consensus_album_obj.get('name', ''))
-                artist_score = artist_set_score(
-                    album.albumartist,
-                    [a.get('name', '') for a in consensus_album_obj.get('artists', [])],
-                )
-                validation_score = (title_score * 0.6) + (artist_score * 0.4)
-                threshold = self.config['fallback_album_validation_threshold'].as_number()
-                if validation_score < threshold:
-                    log.warning(
-                        f"{log_prefix}Fallback tracks converged on unrelated album "
-                        f"'{consensus_album_obj.get('name', '')}' "
-                        f"(score {validation_score:.2f} < {threshold:.2f}). "
-                        "Clearing all Spotify IDs."
-                    )
-                    self.clear_all_ids(album, dry_run)
-                    return
-                current_album_id = fallback_result.get("new_album_id")
-                if current_album_id:
-                    self._apply_authoritative_album_mapping(album, current_album_id, dry_run)
-            else:
-                if self.config['clear_on_no_match'].get(bool):
-                    log.warning(
-                        f"{log_prefix}No Spotify match found for '{album.album}'. "
-                        "Clearing all Spotify IDs (clear_on_no_match=true)."
-                    )
-                    self.clear_all_ids(album, dry_run)
-                else:
-                    log.warning(
-                        f"{log_prefix}No Spotify match found for '{album.album}'. "
-                        "Existing IDs unchanged (set clear_on_no_match: yes to clear them)."
-                    )
+            self.clear_all_ids(album, dry_run)
         else:
-            if self.config['clear_on_no_match'].get(bool):
-                log.warning(
-                    f"{log_prefix}No Spotify album match found for '{album.album}'. "
-                    "Clearing all Spotify IDs (clear_on_no_match=true)."
-                )
-                self.clear_all_ids(album, dry_run)
-            else:
-                log.warning(
-                    f"{log_prefix}No Spotify album match found for '{album.album}'. "
-                    "Skipping (enable use_track_fallback: yes or clear_on_no_match: yes to change behavior)."
-                )
+            log.warning(
+                f"{log_prefix}No Spotify album match found for '{album.album}'. "
+                "Skipping (set clear_on_no_match: yes to clear stale IDs)."
+            )
 
     def _apply_provided_album_id(self, album, album_id, dry_run, force):
         log_prefix = self._log_prefix(dry_run)

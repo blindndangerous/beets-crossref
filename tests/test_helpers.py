@@ -8,7 +8,6 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from beetsplug.spotify_album_match.helpers import (
     artist_set_score,
     build_album_search_queries,
-    build_track_search_queries,
     escape_query_value,
     find_matching_spotify_track,
     fuzzy_title_score,
@@ -41,17 +40,6 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         queries = build_album_search_queries('The "Best" Album', 'Artist "Name"')
         self.assertTrue(any('album:"The Best Album"' in query for query in queries))
         self.assertTrue(any('artist:"Artist Name"' in query for query in queries))
-        self.assertFalse(any('\\' in query for query in queries))
-
-    def test_track_queries_drop_quotes_from_metadata(self):
-        queries = build_track_search_queries(
-            'Song "A"',
-            'Artist "B"',
-            'Album "C"',
-        )
-        self.assertTrue(any('track:"Song A"' in query for query in queries))
-        self.assertTrue(any('artist:"Artist B"' in query for query in queries))
-        self.assertTrue(any('album:"Album C"' in query for query in queries))
         self.assertFalse(any('\\' in query for query in queries))
 
     def test_artist_split_does_not_break_acdc_or_x_ambassadors(self):

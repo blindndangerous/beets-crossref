@@ -23,7 +23,7 @@ class GetRepairStrategyTests(unittest.TestCase):
         self.assertEqual(self.plugin.repairer.get_repair_strategy(), "related_release")
 
     def test_valid_values(self):
-        for val in ("strict", "related_release", "global_fallback"):
+        for val in ("strict", "related_release"):
             self.plugin.config.data["existing_album_repair_strategy"] = val
             self.assertEqual(self.plugin.repairer.get_repair_strategy(), val)
 
@@ -108,98 +108,6 @@ class EvaluateExistingTrackIdsTests(unittest.TestCase):
         mismatched, _missing, matched, _total = self._eval(album, tracks)
         self.assertEqual(mismatched, [])
         self.assertEqual(matched, 1)
-
-
-class FallbackTrackSearchTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-
-    def setUp(self):
-        self.plugin = fresh_plugin()
-        self.repairer = self.plugin.repairer
-        self.plugin.config.data["min_track_artist_score"] = 0.55
-
-    def test_promotes_majority_album_id(self):
-        item1 = FakeItem("Song A", artist="Artist", albumartist="Artist")
-        item2 = FakeItem("Song B", artist="Artist", albumartist="Artist")
-        album = FakeAlbum("Album", "Artist", items=[item1, item2])
-
-        def search_track(item, _album, *, min_artist_score=None):
-            return {"id": f"t_{item.title}", "album": {"id": "consensus_album"}}
-
-        with mock.patch.object(self.plugin.matcher, "search_spotify_track", side_effect=search_track):
-            result = self.repairer.fallback_track_search(album, [item1, item2], dry_run=False, overwrite=True)
-
-        self.assertEqual(result["new_album_id"], "consensus_album")
-        self.assertTrue(result["album_id_changed"])
-        self.assertEqual(result["matched"], 2)
-
-    def test_does_not_promote_below_consensus_ratio(self):
-        item1 = FakeItem("Song A", artist="Artist", albumartist="Artist")
-        item2 = FakeItem("Song B", artist="Artist", albumartist="Artist")
-        item3 = FakeItem("Song C", artist="Artist", albumartist="Artist")
-        album = FakeAlbum("Album", "Artist", items=[item1, item2, item3])
-        album["spotify_album_id"] = "existing_album"
-
-        def search_track(item, _album, *, min_artist_score=None):
-            mapping = {"Song A": "album_x", "Song B": "album_y", "Song C": "album_z"}
-            return {"id": f"t_{item.title}", "album": {"id": mapping[item.title]}}
-
-        with mock.patch.object(self.plugin.matcher, "search_spotify_track", side_effect=search_track):
-            result = self.repairer.fallback_track_search(
-                album, [item1, item2, item3], dry_run=False, overwrite=True,
-            )
-
-        self.assertFalse(result["album_id_changed"])
-        self.assertEqual(result["new_album_id"], "existing_album")
-
-    def test_consensus_ratio_is_configurable(self):
-        # Lower the ratio so a 2-of-5 hit becomes a consensus.
-        self.plugin.config.data["fallback_consensus_ratio"] = 0.3
-        items = [FakeItem(f"Song {i}", artist="Artist") for i in range(5)]
-        album = FakeAlbum("Album", "Artist", items=items)
-
-        def search_track(item, _album, *, min_artist_score=None):
-            # 2 hits on album_x, 3 distinct singletons
-            mapping = {"Song 0": "album_x", "Song 1": "album_x"}
-            return {
-                "id": f"t_{item.title}",
-                "album": {"id": mapping.get(item.title, f"album_{item.title}")},
-            }
-
-        with mock.patch.object(self.plugin.matcher, "search_spotify_track", side_effect=search_track):
-            result = self.repairer.fallback_track_search(album, items, dry_run=False, overwrite=True)
-
-        self.assertEqual(result["new_album_id"], "album_x")
-        self.assertTrue(result["album_id_changed"])
-
-    def test_album_id_unchanged_flag_when_same(self):
-        item = FakeItem("Song A", artist="Artist", albumartist="Artist")
-        album = FakeAlbum("Album", "Artist", items=[item])
-        album["spotify_album_id"] = "same_album"
-
-        with mock.patch.object(
-            self.plugin.matcher, "search_spotify_track",
-            return_value={"id": "t1", "album": {"id": "same_album"}},
-        ):
-            result = self.repairer.fallback_track_search(album, [item], dry_run=False, overwrite=True)
-
-        self.assertFalse(result["album_id_changed"])
-        self.assertEqual(result["new_album_id"], "same_album")
-
-    def test_returns_consensus_album_obj(self):
-        item = FakeItem("Song A", artist="Artist", albumartist="Artist")
-        album = FakeAlbum("Album", "Artist", items=[item])
-
-        spotify_album_obj = {"id": "sp_album", "name": "Album", "artists": [{"name": "Artist"}]}
-        match_track = {"id": "sp_t1", "album": spotify_album_obj}
-
-        with mock.patch.object(self.plugin.matcher, "search_spotify_track", return_value=match_track):
-            result = self.repairer.fallback_track_search(album, [item], dry_run=False, overwrite=True)
-
-        self.assertIsNotNone(result.get("consensus_album_obj"))
-        self.assertEqual(result["consensus_album_obj"]["id"], "sp_album")
 
 
 class RepairFromRelatedReleasesTests(unittest.TestCase):

@@ -3,7 +3,7 @@
 The AlbumMatcher class owns:
     - Album candidate search (by UPC, then text queries)
     - Candidate scoring and selection (with optional interactive disambiguation)
-    - Track matching primitives shared between authoritative-album mapping and fallback search
+    - Mapping the local items of an album onto that album's Spotify tracks
 """
 import logging
 
@@ -13,7 +13,6 @@ from .helpers import (
     album_barcode,
     artist_set_score,
     build_album_search_queries,
-    build_track_search_queries,
     calculate_match_score,
     find_matching_spotify_track,
     fuzzy_title_score,
@@ -24,7 +23,6 @@ from .helpers import (
 log = logging.getLogger("beets.spotify_album_match")
 
 SEARCH_LIMIT = 3
-TRACK_SEARCH_LIMIT = 5
 VARIANT_TITLE_THRESHOLD = 0.6
 
 
@@ -447,118 +445,4 @@ class AlbumMatcher:
                 self.config['duration_mismatch_penalty_threshold'].get(int)
             ),
             duration_mismatch_penalty=self.config['duration_mismatch_penalty'].as_number(),
-        )
-
-    def search_spotify_track(self, item, album, *, min_artist_score=None):
-        """Search Spotify for a single track by ISRC or query variants.
-
-        When `min_artist_score` is given it overrides the configured
-        min_track_artist_score for this lookup; otherwise the configured value applies.
-        """
-        if not item.title and not item.isrc:
-            return None
-
-        if item.isrc:
-            try:
-                results = self.client.search(
-                    q=f"isrc:{item.isrc}",
-                    type="track",
-                    limit=TRACK_SEARCH_LIMIT,
-                )
-            except SpotifyException:
-                log.warning(f"Could not search Spotify by ISRC for '{item.title}'.")
-            else:
-                match = self.select_best_track(item, results, min_artist_score=min_artist_score)
-                if match:
-                    return match
-
-        max_queries = self.config['max_track_search_queries'].get(int)
-        artist_text = item.artist or item.albumartist or ""
-        album_title = album.album if album else ""
-        queries = build_track_search_queries(item.title, artist_text, album_title)
-        if max_queries > 0:
-            queries = queries[:max_queries]
-        for query in queries:
-            log.debug(f"  -> Searching Spotify track with query: {query}")
-            try:
-                results = self.client.search(q=query, type="track", limit=TRACK_SEARCH_LIMIT)
-            except SpotifyException:
-                log.warning(f"Spotify track search failed for query: {query}")
-                continue
-            match = self.select_best_track(item, results, min_artist_score=min_artist_score)
-            if match:
-                return match
-
-        return None
-
-    def select_best_track(self, item, results, *, min_artist_score=None):
-        """Pick the best Spotify track from a search-results dict.
-
-        ISRC matches short-circuit. Otherwise scores by title + artist + duration + album type.
-        `min_artist_score` overrides the configured floor for this lookup.
-        """
-        tracks = results.get("tracks", {}).get("items", []) if results else []
-        if not tracks:
-            return None
-
-        if item.isrc:
-            for track in tracks:
-                track_isrc = track.get('external_ids', {}).get('isrc', '')
-                if track_isrc and track_isrc.lower() == item.isrc.lower():
-                    return track
-
-        floor = (
-            min_artist_score
-            if min_artist_score is not None
-            else self.config['min_track_artist_score'].as_number()
-        )
-        best_track = None
-        best_score = 0.0
-        artist_text = item.artist or item.albumartist or ""
-        for track in tracks:
-            if artist_text:
-                artist_score = artist_set_score(
-                    artist_text,
-                    [artist.get('name', '') for artist in track.get('artists', [])],
-                )
-                if artist_score < floor:
-                    continue
-            else:
-                artist_score = 0.5
-
-            score = self.score_track_candidate(item, track, artist_score=artist_score)
-            if score > best_score:
-                best_score = score
-                best_track = track
-
-        threshold = self.config['track_match_threshold'].as_number()
-        if best_track and best_score >= threshold:
-            return best_track
-        return None
-
-    def score_track_candidate(self, item, track, *, artist_score=None):
-        title_score = fuzzy_title_score(item.title, track.get('name', ''))
-        if artist_score is None:
-            artist_text = item.artist or item.albumartist or ""
-            artist_score = artist_set_score(
-                artist_text,
-                [artist.get('name', '') for artist in track.get('artists', [])],
-            )
-
-        # Duration score: 1.0 within tolerance, 0.0 outside, 0.5 neutral when unknown.
-        duration_score = 0.5
-        if item.length:
-            track_duration = track.get('duration_ms', 0) / 1000
-            if track_duration:
-                duration_tolerance = self.config['duration_tolerance'].get(int)
-                duration_score = 1.0 if abs(track_duration - item.length) <= duration_tolerance else 0.0
-
-        type_score = 1.0 if track.get('album', {}).get('album_type') == "album" else 0.5
-
-        # Weights sum to 1.0; all-perfect → 1.0 exactly.
-        return (
-            (title_score * 0.55) +
-            (artist_score * 0.30) +
-            (duration_score * 0.10) +
-            (type_score * 0.05)
         )

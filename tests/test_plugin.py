@@ -59,15 +59,13 @@ class ProcessSingleAlbumTests(unittest.TestCase):
                                    return_value=[{"id": "sp_track_1"}]):
                 with mock.patch.object(self.plugin.matcher, "match_items_to_tracks",
                                        return_value=[]) as match_mock:
-                    with mock.patch.object(self.plugin.repairer, "fallback_track_search") as fallback_mock:
-                        self.plugin._process_single_album(
-                            album, dry_run=False, interactive=False, force=False, provided_album_id=None,
-                        )
+                    self.plugin._process_single_album(
+                        album, dry_run=False, interactive=False, force=False, provided_album_id=None,
+                    )
 
         self.assertEqual(album.get("spotify_album_id"), "sp_album_1")
         self.assertEqual(album.store_calls, 1)
         self.assertTrue(match_mock.called)
-        fallback_mock.assert_not_called()
 
     def test_dry_run_does_not_verify_a_malformed_stored_album_id(self):
         """The real run deletes the bad ID and searches; the dry run must agree.
@@ -92,108 +90,7 @@ class ProcessSingleAlbumTests(unittest.TestCase):
 
         verify.assert_not_called()
 
-    def test_falls_back_when_no_album_match(self):
-        item = FakeItem("Track 1", artist="Local Artist", albumartist="Local Artist", track=1, disc=1)
-        album = FakeAlbum("Local Album", "Local Artist", items=[item])
-        self.plugin.config.data["use_track_fallback"] = True
-
-        with mock.patch.object(self.plugin.matcher, "find_best_album_match", return_value=(None, [])):
-            with mock.patch.object(
-                self.plugin.repairer, "fallback_track_search",
-                return_value={
-                    "matched": 0, "album_id_changed": False,
-                    "new_album_id": None, "consensus_album_obj": None,
-                },
-            ) as fallback_mock:
-                self.plugin._process_single_album(
-                    album, dry_run=False, interactive=False, force=False, provided_album_id=None,
-                )
-
-        fallback_mock.assert_called_once()
-        # Positional args[0] is album, args[1] is items list.
-        args, kwargs = fallback_mock.call_args
-        self.assertIs(args[0], album)
-        self.assertEqual(len(args[1]), 1)
-        self.assertFalse(kwargs["overwrite"])
-
-    def test_use_track_fallback_false_does_not_call_fallback(self):
-        item = FakeItem("Track", artist="Artist", albumartist="Artist", track=1, disc=1)
-        album = FakeAlbum("Album", "Artist", items=[item])
-        # use_track_fallback defaults to False — do not set it.
-
-        with mock.patch.object(self.plugin.matcher, "find_best_album_match", return_value=(None, [])):
-            with mock.patch.object(self.plugin.repairer, "fallback_track_search") as fallback_mock:
-                self.plugin._process_single_album(
-                    album, dry_run=False, interactive=False, force=False, provided_album_id=None,
-                )
-
-        fallback_mock.assert_not_called()
-
-    def test_two_runs_fill_missing_then_second_run_does_not_repeat_fallback(self):
-        self.plugin.config.data["existing_album_repair_strategy"] = "global_fallback"
-        self.plugin.config.data["use_track_fallback"] = True
-        item1 = FakeItem("Scream at the Walls", artist="10 Years", albumartist="10 Years", track=1, disc=1)
-        item2 = FakeItem("Cycle of Life", artist="10 Years", albumartist="10 Years", track=2, disc=1)
-        album = FakeAlbum("Division", "10 Years", items=[item1, item2])
-        album["spotify_album_id"] = "oldalbum00000000000000"
-
-        old_album_tracks = [
-            {"id": "old_track_a", "disc_number": 1, "track_number": 7},
-            {"id": "old_track_b", "disc_number": 1, "track_number": 8},
-        ]
-        new_album_tracks = [
-            {
-                "id": "newtrack10000000000000", "name": "Scream at the Walls",
-                "artists": [{"name": "10 Years"}], "disc_number": 1,
-                "track_number": 1, "duration_ms": 210000,
-            },
-            {
-                "id": "newtrack20000000000000", "name": "Cycle of Life",
-                "artists": [{"name": "10 Years"}], "disc_number": 1,
-                "track_number": 2, "duration_ms": 220000,
-            },
-        ]
-
-        def get_tracks(album_id):
-            if album_id == "oldalbum00000000000000":
-                return old_album_tracks
-            if album_id == "newalbum00000000000000":
-                return new_album_tracks
-            return []
-
-        def search_track(item, _album, *, min_artist_score=None):
-            if item.title == "Scream at the Walls":
-                return {"id": "newtrack10000000000000", "album": {"id": "newalbum00000000000000"}}
-            if item.title == "Cycle of Life":
-                return {"id": "newtrack20000000000000", "album": {"id": "newalbum00000000000000"}}
-            return None
-
-        with mock.patch.object(self.plugin.client, "get_album", return_value=None):
-            with mock.patch.object(self.plugin.client, "get_album_tracks", side_effect=get_tracks):
-                with mock.patch.object(self.plugin.matcher, "search_spotify_track", side_effect=search_track):
-                    with mock.patch.object(
-                        self.plugin.repairer, "fallback_track_search",
-                        wraps=self.plugin.repairer.fallback_track_search,
-                    ) as fallback_mock:
-                        with mock.patch.object(
-                            self.plugin.matcher, "find_best_album_match",
-                        ) as find_album_mock:
-                            self.plugin._process_single_album(
-                                album, dry_run=False, interactive=False,
-                                force=False, provided_album_id=None,
-                            )
-                            self.plugin._process_single_album(
-                                album, dry_run=False, interactive=False,
-                                force=False, provided_album_id=None,
-                            )
-
-        self.assertEqual(album.get("spotify_album_id"), "newalbum00000000000000")
-        self.assertEqual(item1.get("spotify_track_id"), "newtrack10000000000000")
-        self.assertEqual(item2.get("spotify_track_id"), "newtrack20000000000000")
-        self.assertEqual(fallback_mock.call_count, 1)
-        find_album_mock.assert_not_called()
-
-    def test_strict_repair_mode_skips_fallback_for_existing_album(self):
+    def test_strict_repair_mode_does_not_re_search_the_album(self):
         self.plugin.config.data["existing_album_repair_strategy"] = "strict"
         item1 = FakeItem("Missing A", artist="10 Years", albumartist="10 Years", track=1, disc=1)
         item2 = FakeItem("Missing B", artist="10 Years", albumartist="10 Years", track=2, disc=1)
@@ -209,16 +106,14 @@ class ProcessSingleAlbumTests(unittest.TestCase):
                     self.plugin.matcher, "match_items_to_tracks",
                     return_value=[item1, item2],
                 ):
-                    with mock.patch.object(self.plugin.repairer, "fallback_track_search") as fallback_mock:
-                        with mock.patch.object(
-                            self.plugin.matcher, "find_best_album_match",
-                        ) as find_album_mock:
-                            self.plugin._process_single_album(
-                                album, dry_run=False, interactive=False,
-                                force=False, provided_album_id=None,
-                            )
+                    with mock.patch.object(
+                        self.plugin.matcher, "find_best_album_match",
+                    ) as find_album_mock:
+                        self.plugin._process_single_album(
+                            album, dry_run=False, interactive=False,
+                            force=False, provided_album_id=None,
+                        )
 
-        fallback_mock.assert_not_called()
         find_album_mock.assert_not_called()
 
     def test_related_release_repair_mode_uses_related_release_matcher(self):
@@ -246,18 +141,14 @@ class ProcessSingleAlbumTests(unittest.TestCase):
                             return_value=[],
                         ) as related_repair_mock:
                             with mock.patch.object(
-                                self.plugin.repairer, "fallback_track_search",
-                            ) as fallback_mock:
-                                with mock.patch.object(
-                                    self.plugin.matcher, "find_best_album_match",
-                                ) as find_album_mock:
-                                    self.plugin._process_single_album(
-                                        album, dry_run=False, interactive=False,
-                                        force=False, provided_album_id=None,
-                                    )
+                                self.plugin.matcher, "find_best_album_match",
+                            ) as find_album_mock:
+                                self.plugin._process_single_album(
+                                    album, dry_run=False, interactive=False,
+                                    force=False, provided_album_id=None,
+                                )
 
         related_repair_mock.assert_called_once()
-        fallback_mock.assert_not_called()
         find_album_mock.assert_not_called()
 
     def test_dry_run_does_not_store(self):
@@ -282,8 +173,8 @@ class ProcessSingleAlbumTests(unittest.TestCase):
         self.assertEqual(item.store_calls, 0)
 
 
-class FallbackConsensusValidationTests(unittest.TestCase):
-    """When fallback consensus picks an unrelated album, all IDs should clear."""
+class NoAlbumMatchTests(unittest.TestCase):
+    """What happens when no Spotify album matches at all."""
 
     @classmethod
     def setUpClass(cls):
@@ -291,60 +182,6 @@ class FallbackConsensusValidationTests(unittest.TestCase):
 
     def setUp(self):
         self.plugin = fresh_plugin()
-
-    def test_fallback_unrelated_album_clears_ids(self):
-        # Use a high threshold so the unrelated consensus is definitely below it.
-        self.plugin.config.data["fallback_album_validation_threshold"] = 0.9
-        self.plugin.config.data["verify_existing_ids"] = False
-        self.plugin.config.data["use_track_fallback"] = True
-        item = FakeItem("Blank Shell", artist="Some Artist", albumartist="Some Artist", track=1, disc=1)
-        album = FakeAlbum("My Obscure Album", "Some Artist", items=[item])
-
-        fallback_result = {
-            "matched": 1, "album_id_changed": True,
-            "new_album_id": "wasteland_id",
-            "consensus_album_obj": {
-                "id": "wasteland_id", "name": "Wasteland",
-                "artists": [{"name": "Brent Faiyaz"}],
-            },
-        }
-
-        with mock.patch.object(self.plugin.matcher, "find_best_album_match", return_value=(None, [])):
-            with mock.patch.object(self.plugin.repairer, "fallback_track_search",
-                                   return_value=fallback_result):
-                with mock.patch.object(self.plugin, "clear_all_ids") as clear_mock:
-                    self.plugin._process_single_album(
-                        album, dry_run=False, interactive=False, force=False, provided_album_id=None,
-                    )
-
-        clear_mock.assert_called_once_with(album, False)
-
-    def test_fallback_matching_album_proceeds_to_authoritative_mapping(self):
-        self.plugin.config.data["fallback_album_validation_threshold"] = 0.35
-        self.plugin.config.data["use_track_fallback"] = True
-        item = FakeItem("Track One", artist="Artist", albumartist="Artist", track=1, disc=1)
-        album = FakeAlbum("My Album", "Artist", items=[item])
-
-        fallback_result = {
-            "matched": 1, "album_id_changed": True,
-            "new_album_id": "real_album_id",
-            "consensus_album_obj": {
-                "id": "real_album_id", "name": "My Album",
-                "artists": [{"name": "Artist"}],
-            },
-        }
-
-        with mock.patch.object(self.plugin.matcher, "find_best_album_match", return_value=(None, [])):
-            with mock.patch.object(self.plugin.repairer, "fallback_track_search",
-                                   return_value=fallback_result):
-                with mock.patch.object(
-                    self.plugin, "_apply_authoritative_album_mapping", return_value=[],
-                ) as auth_mock:
-                    self.plugin._process_single_album(
-                        album, dry_run=False, interactive=False, force=False, provided_album_id=None,
-                    )
-
-        auth_mock.assert_called_once_with(album, "real_album_id", False)
 
     def test_no_album_match_clears_when_clear_on_no_match_enabled(self):
         self.plugin.config.data["clear_on_no_match"] = True
@@ -357,29 +194,6 @@ class FallbackConsensusValidationTests(unittest.TestCase):
                 self.plugin._process_single_album(
                     album, dry_run=False, interactive=False, force=False, provided_album_id=None,
                 )
-
-        clear_mock.assert_called_once_with(album, False)
-
-    def test_fallback_no_consensus_clears_when_clear_on_no_match_enabled(self):
-        self.plugin.config.data["clear_on_no_match"] = True
-        self.plugin.config.data["use_track_fallback"] = True
-        item = FakeItem("Track", artist="Artist", albumartist="Artist", track=1, disc=1)
-        item["spotify_track_id"] = "stale"
-        album = FakeAlbum("Ghost Album", "Artist", items=[item])
-
-        fallback_result = {
-            "matched": 0, "album_id_changed": False,
-            "new_album_id": None, "consensus_album_obj": None,
-        }
-
-        with mock.patch.object(self.plugin.matcher, "find_best_album_match", return_value=(None, [])):
-            with mock.patch.object(
-                self.plugin.repairer, "fallback_track_search", return_value=fallback_result,
-            ):
-                with mock.patch.object(self.plugin, "clear_all_ids") as clear_mock:
-                    self.plugin._process_single_album(
-                        album, dry_run=False, interactive=False, force=False, provided_album_id=None,
-                    )
 
         clear_mock.assert_called_once_with(album, False)
 

@@ -79,7 +79,7 @@ Package modules:
 - `plugin.py` — slim orchestrator: config, top-level workflow, ID clearing
 - `cli.py` — Subcommand registration, options, progress file, interactive prompter
 - `matching.py` — `AlbumMatcher`: search, candidate building/selection, track matching
-- `repair.py` — `AlbumRepairer`: verify existing IDs, repair strategies, fallback
+- `repair.py` — `AlbumRepairer`: verify existing IDs, repair from related releases
 - `client.py` — `SpotifyClient`: caching, rate-limiting, retries
 - `helpers.py` — beets-free helpers (importable without beets): fuzzy scoring, query
   building, `clean_spotify_id`, and the artist-ID field writers
@@ -124,7 +124,6 @@ All keys go under `spotify_album_match:` in `config.yaml`.
 - `related_artist_threshold` (default `0.90`) — minimum artist fuzzy score for a result to count as a related/variant release rather than filtered.
 - `min_related_release_artist_score` (default `0.85`) — minimum artist score when collecting supplemental related releases for bonus tracks.
 - `min_preliminary_artist_score` (default `0.20`) — hard floor at the quick-filter stage; below this is dropped before track-level API calls.
-- `max_track_search_queries` (default `3`) — max query variants tried per track (0 = unlimited).
 
 ### Track Matching (album-level)
 
@@ -145,26 +144,16 @@ Album score weights (sum to 1.0):
 - album_type (0.05) — 1.0 album, 0.7 comp, 0.5 single, 0.6 other
 - year (0.05) — 1.0 same year, 0.5 within ±1, else 0
 
-Track score weights (sum to 1.0):
-
-- title (0.55), artist (0.30), duration (0.10), album_type (0.05)
-- duration: 1.0 within tolerance, 0.0 outside, 0.5 neutral when unknown
-- album_type: 1.0 if "album", else 0.5
-
 ### Verification of Existing IDs
 
 - `verify_existing_ids` (default `true`) — validate stored Spotify IDs before accepting.
 - `existing_album_validation_threshold` (default `0.90`) — minimum title*0.6 + artist*0.4 score for stored album to be trusted.
 - `existing_id_mismatch_threshold` (default `0.3`) — max fraction of mismatched track IDs before whole album is re-searched.
-- `existing_album_repair_strategy` (default `related_release`) — one of `strict`, `related_release`, `global_fallback` (last needs `use_track_fallback`).
+- `existing_album_repair_strategy` (default `related_release`) — either `strict` or `related_release`.
 
-### Track-Level Fallback (opt-in)
+### Experimental
 
-- `use_track_fallback` (default `false`) — fall back to per-track search when no album match. Off by default to avoid false positives.
 - `use_upc_lookup` (default `false`) — experimental barcode lookup before the text search.
-- `min_no_album_track_artist_score` (default `0.75`) — stricter artist floor during fallback (no album context).
-- `fallback_album_validation_threshold` (default `0.90`) — minimum score for the consensus album from fallback to be accepted.
-- `fallback_consensus_ratio` (default `0.6`) — fraction of matched tracks needed to promote a new album_id.
 
 ### Clearing Stale IDs
 
@@ -195,8 +184,6 @@ Track score weights (sum to 1.0):
   `cli.InteractivePrompter`, in tests it is replaced with a stub
 - `AlbumRepairer` calls back into the plugin via the `id_clearer` interface
   (`clear_all_ids` / `clear_track_ids`) — keeps the dependency one-way
-- Configurable consensus ratio (`fallback_consensus_ratio`, default 0.6) controls when
-  per-track search results promote to a new album_id
 
 ## Spotify ID Hygiene
 

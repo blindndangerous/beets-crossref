@@ -158,7 +158,6 @@ Album matching:
 - `related_artist_threshold` (`0.90`) — minimum artist score for a result to count as a related or variant release
 - `min_related_release_artist_score` (`0.85`) — minimum artist score when collecting related releases for bonus tracks
 - `min_preliminary_artist_score` (`0.20`) — hard floor at the quick-filter stage, applied before any track-level API calls
-- `max_track_search_queries` (`3`) — maximum query variants tried per track (0 = unlimited)
 - `use_upc_lookup` (`false`) — **experimental.** Search by the album's `barcode` field before
   searching by title and artist. The single hit is accepted only if it scores at least
   `existing_album_validation_threshold` on title and artist, but that gate is weaker than it
@@ -179,14 +178,7 @@ Verifying IDs that are already stored:
 - `verify_existing_ids` (`true`) — re-validate stored Spotify IDs on each run
 - `existing_album_validation_threshold` (`0.90`) — minimum title and artist score for a stored album ID to be trusted
 - `existing_id_mismatch_threshold` (`0.3`) — fraction of mismatched track IDs that triggers a fresh album search
-- `existing_album_repair_strategy` (`related_release`) — one of `strict`, `related_release`, or `global_fallback` (the last needs `use_track_fallback`)
-
-Track-level fallback (opt-in):
-
-- `use_track_fallback` (`false`) — search per track when no album matches; off by default because it can produce false positives
-- `min_no_album_track_artist_score` (`0.75`) — stricter artist floor used during fallback, where there is no album context
-- `fallback_album_validation_threshold` (`0.90`) — minimum score for a consensus album found by fallback
-- `fallback_consensus_ratio` (`0.6`) — fraction of matched tracks that must agree before a new album ID is promoted
+- `existing_album_repair_strategy` (`related_release`) — either `strict` or `related_release`
 
 Clearing stale IDs:
 
