@@ -1,8 +1,8 @@
 """Tests for helpers.py: normalization, query building, track matching."""
+import types
 import unittest
 
 import pytest
-from fakes import FakeItem
 
 from beetsplug.spotify_album_match.helpers import (
     artist_set_score,
@@ -15,6 +15,15 @@ from beetsplug.spotify_album_match.helpers import (
     split_artist_tokens,
     strip_version_tokens,
 )
+
+
+def local_item(**fields):
+    """Stand in for the beets Item attributes find_matching_spotify_track reads."""
+    defaults = {
+        "title": "", "artist": "", "albumartist": "",
+        "track": 0, "disc": 0, "length": 0.0,
+    }
+    return types.SimpleNamespace(**{**defaults, **fields})
 
 
 @pytest.mark.parametrize(("text", "expected"), [
@@ -72,7 +81,7 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         self.assertEqual(split_artist_tokens("Artist / Producer"), ["artist", "producer"])
 
     def test_track_matching_prefers_title_over_track_number_only(self):
-        item = FakeItem(
+        item = local_item(
             title="Song A",
             artist="Artist",
             albumartist="Artist",
@@ -103,7 +112,7 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         self.assertEqual(match["id"], "good")
 
     def test_track_matching_rejects_low_confidence_position_only_match(self):
-        item = FakeItem(
+        item = local_item(
             title="Song A",
             artist="Artist",
             albumartist="Artist",
@@ -126,7 +135,7 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         self.assertIsNone(match)
 
     def test_track_matching_rejects_different_artist_even_with_near_title(self):
-        item = FakeItem(
+        item = local_item(
             title="Scream at the Walls",
             artist="10 Years",
             albumartist="10 Years",
@@ -190,7 +199,7 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         exactly the default track_match_threshold, so any title deviation at
         all fails. fuzzy_title_score("Song Pt. 1", "Song, Part 1") is 0.90.
         """
-        item = FakeItem(
+        item = local_item(
             title="Song Pt. 1", artist="Artist", albumartist="Artist",
             track=1, disc=0, length=300.0,
         )
@@ -215,7 +224,7 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         With disc 0 disabling the position bonus, the second movement was
         assigned the first movement's Spotify ID.
         """
-        movement_two = FakeItem(
+        movement_two = local_item(
             title="Suite (II. Adagio)", artist="Artist", albumartist="Artist",
             track=2, disc=0, length=302.0,
         )
@@ -238,7 +247,7 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         self.assertEqual(match["id"], "movement_two")
 
     def test_track_matching_does_not_bonus_across_different_discs(self):
-        item = FakeItem(
+        item = local_item(
             title="Song", artist="Artist", albumartist="Artist", track=1, disc=2,
         )
         tracks = [{
@@ -257,7 +266,7 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
     def test_track_matching_large_duration_diff_applies_penalty(self):
         # Both tracks have identical title/artist; the one with wildly different duration
         # should score lower due to the penalty.
-        item = FakeItem(title="Song", artist="Artist", length=200.0)
+        item = local_item(title="Song", artist="Artist", length=200.0)
         tracks = [
             {
                 "id": "close_duration",
@@ -284,7 +293,7 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
 
     def test_track_matching_large_duration_diff_can_cause_no_match(self):
         # If only a far-duration track exists, penalty can push score below threshold.
-        item = FakeItem(title="Song", artist="Artist", length=200.0)
+        item = local_item(title="Song", artist="Artist", length=200.0)
         tracks = [
             {
                 "id": "only_track",
@@ -310,7 +319,7 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         self.assertIsNone(match_strict)
 
     def test_track_matching_small_duration_diff_gives_bonus(self):
-        item = FakeItem(title="Song", artist="Artist", length=200.0)
+        item = local_item(title="Song", artist="Artist", length=200.0)
         tracks_bonus = [
             {
                 "id": "close",

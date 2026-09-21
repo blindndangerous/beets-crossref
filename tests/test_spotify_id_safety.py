@@ -1,9 +1,9 @@
 """Tests for Spotify ID validation: malformed IDs never reach the API or the DB."""
-import unittest
 from unittest import mock
 
-from fakes import FakeAlbum, FakeItem
-from plugin_test_utils import fresh_plugin
+from beets import plugins
+from beets.library import Album, Item
+from beets.test.helper import PluginTestCase
 
 from beetsplug.spotify_album_match.helpers import clean_spotify_id
 
@@ -22,12 +22,31 @@ def fake_spotify():
     )
 
 
-class SpotifyIdSafetyTest(unittest.TestCase):
+class SpotifyIdSafetyTest(PluginTestCase):
+    """See test_plugin.py for why the plugin is loaded rather than constructed."""
+
+    plugin = "spotify_album_match"
+
     def setUp(self):
-        self.plugin = fresh_plugin()
+        super().setUp()
+        self.plugin = next(
+            p for p in plugins.find_plugins() if p.name == "spotify_album_match"
+        )
         self.client = self.plugin.client
         self.client._spotify = fake_spotify()
         self.client.min_request_interval = 0
+
+    def add_album_with_items(self, album_name, albumartist, tracks):
+        items = []
+        for fields in tracks:
+            fields = dict(fields)
+            flex = fields.pop("flex", {})
+            item = self.add_item(album=album_name, albumartist=albumartist, **fields)
+            for key, value in flex.items():
+                item[key] = value
+            item.store()
+            items.append(item)
+        return self.lib.add_album(items), items
 
     def test_clean_spotify_id_accepts_only_base62_22_char_values(self):
         self.assertEqual(clean_spotify_id(VALID_TRACK_ID), VALID_TRACK_ID)
@@ -52,33 +71,34 @@ class SpotifyIdSafetyTest(unittest.TestCase):
         self.client._spotify.album.assert_not_called()
 
     def test_clear_functions_delete_flexible_fields_instead_of_blanking_them(self):
-        item_with_id = FakeItem("matched")
-        item_with_id["spotify_track_id"] = VALID_TRACK_ID
-        item_with_blank = FakeItem("blank")
-        item_with_blank["spotify_track_id"] = ""
-        item_without_id = FakeItem("missing")
-        album = FakeAlbum(
-            "Album", "Artist",
-            items=[item_with_id, item_with_blank, item_without_id],
-        )
+        album, items = self.add_album_with_items("Album", "Artist", [
+            {"title": "matched", "track": 1, "flex": {"spotify_track_id": VALID_TRACK_ID}},
+            {"title": "blank", "track": 2, "flex": {"spotify_track_id": ""}},
+            {"title": "missing", "track": 3},
+        ])
         album["spotify_album_id"] = VALID_ALBUM_ID
+        album.store(inherit=False)
 
         self.plugin.clear_all_ids(album, dry_run=False)
 
         self.assertNotIn("spotify_album_id", album)
-        self.assertNotIn("spotify_track_id", item_with_id)
-        self.assertNotIn("spotify_track_id", item_with_blank)
-        self.assertNotIn("spotify_track_id", item_without_id)
+        for item in items:
+            item.load()
+            self.assertNotIn("spotify_track_id", item)
 
     def test_malformed_stored_ids_are_deleted_before_processing_album(self):
-        item = FakeItem("bad track")
-        item["spotify_track_id"] = "bad"
-        album = FakeAlbum("Album", "Artist", items=[item])
+        album, (item,) = self.add_album_with_items("Album", "Artist", [
+            {"title": "bad track", "track": 1, "flex": {"spotify_track_id": "bad"}},
+        ])
         album["spotify_album_id"] = ""
+        album.store(inherit=False)
 
-        self.plugin._clear_malformed_stored_ids(album, dry_run=False)
+        with mock.patch.object(Album, "store", autospec=True, side_effect=Album.store) as album_store:
+            with mock.patch.object(Item, "store", autospec=True, side_effect=Item.store) as item_store:
+                self.plugin._clear_malformed_stored_ids(album, dry_run=False)
 
         self.assertNotIn("spotify_album_id", album)
+        item.load()
         self.assertNotIn("spotify_track_id", item)
-        self.assertEqual(album.store_calls, 1)
-        self.assertEqual(item.store_calls, 1)
+        album_store.assert_called_once_with(album, inherit=False)
+        self.assertEqual([call.args[0].id for call in item_store.call_args_list], [item.id])

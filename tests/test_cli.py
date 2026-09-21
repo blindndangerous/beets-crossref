@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from fakes import FakeAlbum
+from beets.library import Album
 
 from beetsplug.spotify_album_match import cli
 
@@ -87,28 +87,28 @@ class InteractivePrompterTests(unittest.TestCase):
 
     def test_b_raises_user_abort(self):
         prompter = cli.InteractivePrompter()
-        local_album = FakeAlbum("Album", "Artist")
+        local_album = Album(album="Album", albumartist="Artist")
         with mock.patch("builtins.input", return_value="b"):
             with self.assertRaises(cli.UserAbort):
                 prompter([self._candidate()], local_album, [], lambda *a, **kw: None)
 
     def test_ctrl_c_raises_user_abort(self):
         prompter = cli.InteractivePrompter()
-        local_album = FakeAlbum("Album", "Artist")
+        local_album = Album(album="Album", albumartist="Artist")
         with mock.patch("builtins.input", side_effect=KeyboardInterrupt):
             with self.assertRaises(cli.UserAbort):
                 prompter([self._candidate()], local_album, [], lambda *a, **kw: None)
 
     def test_skip_returns_none(self):
         prompter = cli.InteractivePrompter()
-        local_album = FakeAlbum("Album", "Artist")
+        local_album = Album(album="Album", albumartist="Artist")
         with mock.patch("builtins.input", return_value="s"):
             result = prompter([self._candidate()], local_album, [], lambda *a, **kw: None)
         self.assertIsNone(result)
 
     def test_numeric_choice_returns_candidate(self):
         prompter = cli.InteractivePrompter()
-        local_album = FakeAlbum("Album", "Artist")
+        local_album = Album(album="Album", albumartist="Artist")
         c1 = self._candidate()
         c2 = self._candidate(album={"id": "a2", "name": "A2", "artists": [{"name": "X"}]})
         with mock.patch("builtins.input", return_value="2"):
@@ -117,7 +117,7 @@ class InteractivePrompterTests(unittest.TestCase):
 
     def test_inline_album_id_is_built_into_a_candidate(self):
         prompter = cli.InteractivePrompter()
-        local_album = FakeAlbum("Album", "Artist")
+        local_album = Album(album="Album", albumartist="Artist")
         entered = self._candidate(album={"id": "b" * 22, "name": "Entered", "artists": []})
         built = []
 
@@ -133,7 +133,7 @@ class InteractivePrompterTests(unittest.TestCase):
 
     def test_unparsable_album_id_reprompts(self):
         prompter = cli.InteractivePrompter()
-        local_album = FakeAlbum("Album", "Artist")
+        local_album = Album(album="Album", albumartist="Artist")
         c1 = self._candidate()
 
         with mock.patch("builtins.input", side_effect=["i nonsense", "1"]):

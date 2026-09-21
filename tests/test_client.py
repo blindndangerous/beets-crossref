@@ -4,7 +4,6 @@ import unittest
 from unittest import mock
 
 import requests
-from plugin_test_utils import fresh_plugin
 from spotipy.exceptions import SpotifyException
 
 from beetsplug.spotify_album_match.client import RateLimitAbort, SpotifyClient
@@ -13,13 +12,14 @@ from beetsplug.spotify_album_match.client import RateLimitAbort, SpotifyClient
 class SpotifyClientRetryTests(unittest.TestCase):
 
     def setUp(self):
-        self.plugin = fresh_plugin()
-        self.client = self.plugin.client
+        # client_id=None leaves _spotify None (and logs an error), which is
+        # what every test here wants: the transport is a stand-in.
+        self.client = SpotifyClient(
+            client_id=None, client_secret=None,
+            max_retries=3, retry_delay=1,
+            stop_on_rate_limit=True, min_request_interval=0,
+        )
         self.client._spotify = types.SimpleNamespace()
-        self.client.min_request_interval = 0
-        self.client.max_retries = 3
-        self.client.retry_delay = 1
-        self.client.stop_on_rate_limit = True
 
     def test_retry_request_aborts_on_rate_limit_when_configured(self):
         def always_429():
@@ -122,9 +122,9 @@ class SpotifyClientRetryTests(unittest.TestCase):
 
 class SpotifyClientCacheAndPaginationTests(unittest.TestCase):
     def setUp(self):
-        self.plugin = fresh_plugin()
-        self.client = self.plugin.client
-        self.client.min_request_interval = 0
+        self.client = SpotifyClient(
+            client_id=None, client_secret=None, min_request_interval=0,
+        )
 
     def test_search_results_are_cached_per_query(self):
         calls = []
@@ -178,11 +178,15 @@ class SpotifyClientTransportTests(unittest.TestCase):
         from spotipy.cache_handler import MemoryCacheHandler
 
         client = SpotifyClient(client_id="an-id", client_secret="a-secret")
-        auth_manager = client._spotify.kwargs.get("auth_manager")
-        self.assertIsInstance(auth_manager.cache_handler, MemoryCacheHandler)
+        self.assertIsInstance(
+            client._spotify.auth_manager.cache_handler, MemoryCacheHandler,
+        )
 
     def test_client_is_built_with_a_plain_requests_session(self):
         client = SpotifyClient(client_id="an-id", client_secret="a-secret")
-        kwargs = client._spotify.kwargs
-        self.assertIsInstance(kwargs.get("requests_session"), requests.Session)
-        self.assertNotIn("retries", kwargs)
+        session = client._spotify._session
+        self.assertIsInstance(session, requests.Session)
+        # spotipy only mounts its urllib3 Retry adapter in _build_session(),
+        # which it skips for a session it was handed (client.py:188).
+        adapter = session.get_adapter("https://api.spotify.com/v1/")
+        self.assertEqual(adapter.max_retries.total, 0)

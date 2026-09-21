@@ -1,13 +1,30 @@
 """Tests for matching.py: AlbumMatcher candidate selection."""
-import unittest
+from beets import plugins
+from beets.library import Album
+from beets.test.helper import PluginTestCase
 
-from fakes import FakeAlbum
-from plugin_test_utils import fresh_plugin
 
+class SpotifyPluginTestCase(PluginTestCase):
+    """beets' own harness: temp library, temp confuse config, real plugin.
 
-class AlbumMatcherSelectionTests(unittest.TestCase):
+    `preload_plugin` is left at its default True, so beets loads the plugin
+    exactly as a real run does (registering the three flexible field types) and
+    the test picks the resulting instance out of `find_plugins()`. Every test
+    patches `plugin.client`, so nothing ever reaches the network.
+    """
+
+    plugin = "spotify_album_match"
+
     def setUp(self):
-        self.plugin = fresh_plugin()
+        super().setUp()
+        self.plugin = next(
+            p for p in plugins.find_plugins() if p.name == "spotify_album_match"
+        )
+
+
+class AlbumMatcherSelectionTests(SpotifyPluginTestCase):
+    def setUp(self):
+        super().setUp()
         self.matcher = self.plugin.matcher
         # Defaults sometimes need overriding for individual tests.
 
@@ -26,7 +43,7 @@ class AlbumMatcherSelectionTests(unittest.TestCase):
         return base
 
     def test_non_interactive_uncertain_returns_none(self):
-        local_album = FakeAlbum("Local", "Artist")
+        local_album = Album(album="Local", albumartist="Artist")
         candidates = [
             self._candidate(score=0.60, album={"id": "a1", "name": "A1", "artists": [{"name": "Artist"}]}),
             self._candidate(
@@ -41,13 +58,13 @@ class AlbumMatcherSelectionTests(unittest.TestCase):
         self.assertEqual(supplemental, [])
 
     def test_interactive_uses_prompter_choice(self):
-        local_album = FakeAlbum("Local", "Artist")
+        local_album = Album(album="Local", albumartist="Artist")
         first = self._candidate(score=0.60, album={"id": "a1", "name": "A1", "artists": [{"name": "Artist"}]})
         second = self._candidate(
             score=0.55, popularity=9,
             album={"id": "a2", "name": "A2", "artists": [{"name": "Artist"}]},
         )
-        self.plugin.config.data["related_artist_threshold"] = 0.65
+        self.config["spotify_album_match"]["related_artist_threshold"] = 0.65
 
         self.matcher.prompter = lambda *args, **kwargs: second
         selected, supplemental = self.matcher._select_album_candidate(
@@ -58,9 +75,10 @@ class AlbumMatcherSelectionTests(unittest.TestCase):
         self.assertEqual(supplemental[0]["album"]["id"], "a1")
 
     def test_prefers_standard_release_when_eligible(self):
-        local_album = FakeAlbum("Local", "Artist")
-        self.plugin.config.data["match_threshold"] = 0.7
-        self.plugin.config.data["certainty_margin"] = 0.15
+        local_album = Album(album="Local", albumartist="Artist")
+        self.config["spotify_album_match"].set(
+            {"match_threshold": 0.7, "certainty_margin": 0.15},
+        )
         candidates = [
             self._candidate(
                 score=0.86, album={"id": "variant", "name": "Local (Deluxe)"},
@@ -81,9 +99,10 @@ class AlbumMatcherSelectionTests(unittest.TestCase):
     def test_score_beats_popularity(self):
         # Score must be the primary sort key — a popular but inaccurate album
         # should not beat a better-scored one.
-        local_album = FakeAlbum("Local", "Artist")
-        self.plugin.config.data["match_threshold"] = 0.7
-        self.plugin.config.data["certainty_margin"] = 0.15
+        local_album = Album(album="Local", albumartist="Artist")
+        self.config["spotify_album_match"].set(
+            {"match_threshold": 0.7, "certainty_margin": 0.15},
+        )
         candidates = [
             self._candidate(
                 score=0.90, album={"id": "accurate_low_pop", "name": "Local"},
@@ -98,4 +117,3 @@ class AlbumMatcherSelectionTests(unittest.TestCase):
             local_album, [], candidates, interactive=False,
         )
         self.assertEqual(selected["id"], "accurate_low_pop")
-
