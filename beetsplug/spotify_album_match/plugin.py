@@ -103,7 +103,6 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
             return
         self._abort_requested = False
         self.client.reset()
-        self._configure_debug_logging(opts)
         if opts.force:
             log.info("Force mode enabled. Existing Spotify IDs will be updated.")
 
@@ -418,24 +417,6 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
             log.info("Progress file cleared.")
         else:
             log.info("No progress file to clear.")
-
-    @staticmethod
-    def _configure_debug_logging(opts):
-        if not getattr(opts, 'debug', False):
-            return
-        log.setLevel(logging.DEBUG)
-        if not log.handlers:
-            handler = logging.StreamHandler()
-            root_logger = logging.getLogger()
-            if root_logger.handlers:
-                handler.setFormatter(root_logger.handlers[0].formatter)
-            handler.setLevel(logging.DEBUG)
-            log.addHandler(handler)
-        else:
-            for handler in log.handlers:
-                handler.setLevel(logging.DEBUG)
-        log.propagate = False
-        log.info("Debug logging enabled for spotify-album-match.")
 
     def _handle_user_abort(self):
         self._abort_requested = True

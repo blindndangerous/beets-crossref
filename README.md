@@ -96,7 +96,8 @@ Options:
 - `--resume` — skip albums already recorded as done in the progress file
 - `--progress-file PATH` — path to the progress file (must end in `.json`)
 - `--clear-progress` — delete the progress file and start fresh
-- `--debug` — verbose debug logging for this plugin
+
+For verbose logging use beets' own `-v` flag: `beet -v spotify-album-match`.
 
 The progress file defaults to `$BEETSDIR/spotify_album_match_progress.json`,
 falling back to `~/.config/beets/spotify_album_match_progress.json` when

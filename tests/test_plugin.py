@@ -374,7 +374,7 @@ class RunSpotifyMatchTests(unittest.TestCase):
         album2 = FakeAlbum("Album 2", "Artist")
         lib = FakeLib([album1, album2])
         opts = types.SimpleNamespace(
-            debug=False, force=False, spotify_album_id=None,
+            force=False, spotify_album_id=None,
             interactive=True, dry_run=False,
             resume=False, progress_file=None, clear_progress=False,
         )
@@ -399,7 +399,7 @@ class RunSpotifyMatchTests(unittest.TestCase):
     @staticmethod
     def _opts(progress_file, **overrides):
         opts = types.SimpleNamespace(
-            debug=False, force=False, spotify_album_id=None,
+            force=False, spotify_album_id=None,
             interactive=False, dry_run=False,
             resume=True, progress_file=progress_file, clear_progress=False,
         )

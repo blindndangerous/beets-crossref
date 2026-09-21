@@ -42,10 +42,6 @@ def build_subcommand(run_func):
         help='Spotify album URL/URI/ID to use for the matched album',
     )
     cmd.parser.add_option(
-        '--debug', action='store_true',
-        help='enable debug logging for spotify-album-match',
-    )
-    cmd.parser.add_option(
         '--resume', action='store_true',
         help='skip albums already processed in a previous run (uses a progress file)',
     )
