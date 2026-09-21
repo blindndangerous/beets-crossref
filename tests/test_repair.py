@@ -1,20 +1,14 @@
-"""Tests for repair.py: AlbumRepairer evaluation, strategies, fallback consensus."""
-import pathlib
-import sys
+"""Tests for repair.py: AlbumRepairer evaluation and repair strategies."""
 import unittest
 from unittest import mock
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-
 from fakes import FakeAlbum, FakeItem
-from plugin_test_utils import fresh_plugin, load_package
+from plugin_test_utils import fresh_plugin
+
+from beetsplug.spotify_album_match.repair import AlbumRepairer
 
 
 class GetRepairStrategyTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-
     def setUp(self):
         self.plugin = fresh_plugin()
 
@@ -29,13 +23,8 @@ class GetRepairStrategyTests(unittest.TestCase):
 
 
 class EvaluateExistingTrackIdsTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-        cls.repair_module = __import__("beetsplug.spotify_album_match.repair", fromlist=["x"])
-
     def _eval(self, album, tracks):
-        return self.repair_module.AlbumRepairer.evaluate_existing_track_ids(album, tracks)
+        return AlbumRepairer.evaluate_existing_track_ids(album, tracks)
 
     def test_all_match(self):
         item1 = FakeItem("A", track=1, disc=1)
@@ -87,10 +76,6 @@ class EvaluateExistingTrackIdsTests(unittest.TestCase):
 
 
 class RepairFromRelatedReleasesTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-
     def setUp(self):
         self.plugin = fresh_plugin()
         self.repairer = self.plugin.repairer
@@ -128,6 +113,3 @@ class RepairFromRelatedReleasesTests(unittest.TestCase):
         # would overwrite already-correct IDs from the primary release.
         authoritative_mock.assert_not_called()
 
-
-if __name__ == "__main__":
-    unittest.main()

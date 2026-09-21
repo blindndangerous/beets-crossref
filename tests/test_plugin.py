@@ -1,24 +1,19 @@
 """Tests for plugin.py: top-level orchestration, _process_single_album flows."""
 import json
 import os
-import pathlib
-import sys
 import tempfile
 import types
 import unittest
 from unittest import mock
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-
 from fakes import FakeAlbum, FakeItem
-from plugin_test_utils import fresh_plugin, load_package
+from plugin_test_utils import fresh_plugin
+
+from beetsplug.spotify_album_match import helpers
+from beetsplug.spotify_album_match.cli import UserAbort
 
 
 class PluginSmokeTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-
     def setUp(self):
         self.plugin = fresh_plugin()
 
@@ -28,19 +23,18 @@ class PluginSmokeTests(unittest.TestCase):
         self.assertEqual(commands[0].name, "spotify-album-match")
         self.assertTrue(callable(commands[0].func))
 
-    def test_item_types_declares_spotify_track_id(self):
-        self.assertIn("spotify_track_id", type(self.plugin).item_types)
-
-    def test_album_types_declares_spotify_album_id(self):
-        self.assertIn("spotify_album_id", type(self.plugin).album_types)
+    def test_registers_its_three_flexible_fields(self):
+        self.assertEqual(
+            set(type(self.plugin).item_types),
+            {"spotify_track_id", "spotify_artist_id"},
+        )
+        self.assertEqual(
+            set(type(self.plugin).album_types),
+            {"spotify_album_id", "spotify_artist_id"},
+        )
 
 
 class ProcessSingleAlbumTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-        cls.cli = __import__("beetsplug.spotify_album_match.cli", fromlist=["x"])
-
     def setUp(self):
         self.plugin = fresh_plugin()
         self.plugin.config.data["min_track_artist_score"] = 0.55
@@ -175,10 +169,6 @@ class ProcessSingleAlbumTests(unittest.TestCase):
 class NoAlbumMatchTests(unittest.TestCase):
     """What happens when no Spotify album matches at all."""
 
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-
     def setUp(self):
         self.plugin = fresh_plugin()
 
@@ -198,10 +188,6 @@ class NoAlbumMatchTests(unittest.TestCase):
 
 
 class WrongStoredIdTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-
     def setUp(self):
         self.plugin = fresh_plugin()
 
@@ -239,10 +225,6 @@ class WrongStoredIdTests(unittest.TestCase):
 
 
 class ApplyProvidedAlbumIdTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-
     def setUp(self):
         self.plugin = fresh_plugin()
 
@@ -285,20 +267,8 @@ class ApplyProvidedAlbumIdTests(unittest.TestCase):
 
 
 class ClearIdTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-
     def setUp(self):
         self.plugin = fresh_plugin()
-
-    def test_clear_track_ids_clears_when_enabled(self):
-        self.plugin.config.data["clear_unmatched_track_ids"] = True
-        item = FakeItem("Bonus Track", track=99, disc=1)
-        item["spotify_track_id"] = "stale_id"
-        self.plugin.clear_track_ids([item], dry_run=False)
-        self.assertNotIn("spotify_track_id", item)
-        self.assertEqual(item.store_calls, 1)
 
     def test_clear_track_ids_no_op_when_disabled(self):
         self.plugin.config.data["clear_unmatched_track_ids"] = False
@@ -322,43 +292,8 @@ class ClearIdTests(unittest.TestCase):
         self.plugin.clear_track_ids([item], dry_run=False)
         self.assertEqual(item.store_calls, 0)
 
-    def test_clear_all_ids_clears_album_and_tracks(self):
-        item1 = FakeItem("Track 1", track=1, disc=1)
-        item1["spotify_track_id"] = "t1"
-        item2 = FakeItem("Track 2", track=2, disc=1)
-        item2["spotify_track_id"] = "t2"
-        album = FakeAlbum("Album", "Artist", items=[item1, item2])
-        album["spotify_album_id"] = "album_id"
-
-        self.plugin.clear_all_ids(album, dry_run=False)
-
-        self.assertNotIn("spotify_album_id", album)
-        self.assertNotIn("spotify_track_id", item1)
-        self.assertNotIn("spotify_track_id", item2)
-        self.assertGreater(album.store_calls, 0)
-        self.assertGreater(item1.store_calls, 0)
-        self.assertGreater(item2.store_calls, 0)
-
-    def test_clear_all_ids_dry_run_does_not_store(self):
-        item = FakeItem("Track 1", track=1, disc=1)
-        item["spotify_track_id"] = "t1"
-        album = FakeAlbum("Album", "Artist", items=[item])
-        album["spotify_album_id"] = "album_id"
-
-        self.plugin.clear_all_ids(album, dry_run=True)
-
-        self.assertEqual(album.get("spotify_album_id"), "album_id")
-        self.assertEqual(item.get("spotify_track_id"), "t1")
-        self.assertEqual(album.store_calls, 0)
-        self.assertEqual(item.store_calls, 0)
-
 
 class RunSpotifyMatchTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-        cls.cli = __import__("beetsplug.spotify_album_match.cli", fromlist=["x"])
-
     def setUp(self):
         self.plugin = fresh_plugin()
 
@@ -383,7 +318,7 @@ class RunSpotifyMatchTests(unittest.TestCase):
 
         with mock.patch.object(
             self.plugin, "_process_single_album",
-            side_effect=self.cli.UserAbort("Aborted by user."),
+            side_effect=UserAbort("Aborted by user."),
         ) as process_mock:
             self.plugin._run_spotify_match(lib, opts, [])
 
@@ -462,11 +397,6 @@ class RunSpotifyMatchTests(unittest.TestCase):
 class CalculateMatchScoreTests(unittest.TestCase):
     """Helper-level tests that exercise calculate_match_score directly."""
 
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-        cls.helpers = __import__("beetsplug.spotify_album_match.helpers", fromlist=["x"])
-
     def test_year_bonus_applied(self):
         item = FakeItem("Track 1", track=1, disc=1)
         album = FakeAlbum("Test Album", "Artist", year=2010, items=[item])
@@ -474,9 +404,9 @@ class CalculateMatchScoreTests(unittest.TestCase):
             "name": "Test Album", "artists": [{"name": "Artist"}],
             "album_type": "album", "release_date": "2010-06-01",
         }
-        score_with_year = self.helpers.calculate_match_score(album, [item], [], sp_album)
+        score_with_year = helpers.calculate_match_score(album, [item], [], sp_album)
         sp_album_no_year = dict(sp_album, release_date="2005-01-01")
-        score_no_year = self.helpers.calculate_match_score(album, [item], [], sp_album_no_year)
+        score_no_year = helpers.calculate_match_score(album, [item], [], sp_album_no_year)
         self.assertGreater(score_with_year, score_no_year)
 
     def test_missing_release_date_key_does_not_raise(self):
@@ -487,10 +417,7 @@ class CalculateMatchScoreTests(unittest.TestCase):
             "album_type": "album",
         }
         try:
-            self.helpers.calculate_match_score(album, [item], [], sp_album)
+            helpers.calculate_match_score(album, [item], [], sp_album)
         except KeyError:
             self.fail("calculate_match_score raised KeyError on missing release_date")
 
-
-if __name__ == "__main__":
-    unittest.main()

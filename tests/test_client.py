@@ -1,48 +1,35 @@
 """Tests for SpotifyClient retry/throttle behavior."""
-import pathlib
-import sys
 import types
 import unittest
 from unittest import mock
 
 import requests
+from plugin_test_utils import fresh_plugin
+from spotipy.exceptions import SpotifyException
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-
-from plugin_test_utils import fresh_plugin, load_package
+from beetsplug.spotify_album_match.client import RateLimitAbort, SpotifyClient
 
 
 class SpotifyClientRetryTests(unittest.TestCase):
 
-    @classmethod
-    def setUpClass(cls):
-        cls.pkg = load_package()
-        cls.client_module = __import__(
-            "beetsplug.spotify_album_match.client", fromlist=["SpotifyException"],
-        )
-
     def setUp(self):
         self.plugin = fresh_plugin()
         self.client = self.plugin.client
-        self.client._spotify = __import__("types").SimpleNamespace()
+        self.client._spotify = types.SimpleNamespace()
         self.client.min_request_interval = 0
         self.client.max_retries = 3
         self.client.retry_delay = 1
         self.client.stop_on_rate_limit = True
 
-    def _spotify_exc(self, **kwargs):
-        SpotifyException = __import__("spotipy.exceptions", fromlist=["SpotifyException"]).SpotifyException
-        return SpotifyException(**kwargs)
-
     def test_retry_request_aborts_on_rate_limit_when_configured(self):
         def always_429():
-            raise self._spotify_exc(
+            raise SpotifyException(
                 http_status=429, code=0, msg="rate limited",
                 headers={"Retry-After": "7"},
             )
 
         with mock.patch.object(self.client, "_wait_for_request_slot", return_value=None):
-            with self.assertRaises(self.pkg.plugin.RateLimitAbort):
+            with self.assertRaises(RateLimitAbort):
                 self.client._retry_request(always_429)
 
         self.assertTrue(self.client._abort_requested)
@@ -50,7 +37,7 @@ class SpotifyClientRetryTests(unittest.TestCase):
     def test_retry_request_retries_after_429_when_not_stopping(self):
         self.client.stop_on_rate_limit = False
         results = [
-            self._spotify_exc(
+            SpotifyException(
                 http_status=429, code=0, msg="rate limited",
                 headers={"Retry-After": "2"},
             ),
@@ -76,12 +63,11 @@ class SpotifyClientRetryTests(unittest.TestCase):
         def flaky():
             attempts["count"] += 1
             if attempts["count"] == 1:
-                raise self._spotify_exc(http_status=503, code=0, msg="unavailable")
+                raise SpotifyException(http_status=503, code=0, msg="unavailable")
             return "ok"
 
-        import time as time_module
         with mock.patch.object(self.client, "_wait_for_request_slot", return_value=None):
-            with mock.patch.object(time_module, "sleep") as sleep_mock:
+            with mock.patch("time.sleep") as sleep_mock:
                 response = self.client._retry_request(flaky)
 
         self.assertEqual(response, "ok")
@@ -96,9 +82,8 @@ class SpotifyClientRetryTests(unittest.TestCase):
                 raise requests.exceptions.ConnectionError("connection reset")
             return "ok"
 
-        import time as time_module
         with mock.patch.object(self.client, "_wait_for_request_slot", return_value=None):
-            with mock.patch.object(time_module, "sleep") as sleep_mock:
+            with mock.patch("time.sleep") as sleep_mock:
                 response = self.client._retry_request(flaky)
 
         self.assertEqual(response, "ok")
@@ -111,9 +96,8 @@ class SpotifyClientRetryTests(unittest.TestCase):
             attempts["count"] += 1
             raise requests.exceptions.ReadTimeout("too slow")
 
-        import time as time_module
         with mock.patch.object(self.client, "_wait_for_request_slot", return_value=None):
-            with mock.patch.object(time_module, "sleep"):
+            with mock.patch("time.sleep"):
                 with self.assertRaises(requests.exceptions.RequestException):
                     self.client._retry_request(always_timeout)
 
@@ -125,12 +109,11 @@ class SpotifyClientRetryTests(unittest.TestCase):
         def flaky():
             attempts["count"] += 1
             if attempts["count"] == 1:
-                raise self._spotify_exc(http_status=500, code=0, msg="server error")
+                raise SpotifyException(http_status=500, code=0, msg="server error")
             return "ok"
 
-        import time as time_module
         with mock.patch.object(self.client, "_wait_for_request_slot", return_value=None):
-            with mock.patch.object(time_module, "sleep") as sleep_mock:
+            with mock.patch("time.sleep") as sleep_mock:
                 response = self.client._retry_request(flaky)
 
         self.assertEqual(response, "ok")
@@ -138,10 +121,6 @@ class SpotifyClientRetryTests(unittest.TestCase):
 
 
 class SpotifyClientCacheAndPaginationTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-
     def setUp(self):
         self.plugin = fresh_plugin()
         self.client = self.plugin.client
@@ -190,13 +169,6 @@ class SpotifyClientTransportTests(unittest.TestCase):
     (spotipy client.py:188).
     """
 
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-        cls.client_module = __import__(
-            "beetsplug.spotify_album_match.client", fromlist=["SpotifyClient"],
-        )
-
     def test_token_is_cached_in_memory_not_on_disk(self):
         """spotipy defaults to CacheFileHandler, which writes ".cache" in the CWD.
 
@@ -205,20 +177,12 @@ class SpotifyClientTransportTests(unittest.TestCase):
         """
         from spotipy.cache_handler import MemoryCacheHandler
 
-        client = self.client_module.SpotifyClient(
-            client_id="an-id", client_secret="a-secret",
-        )
+        client = SpotifyClient(client_id="an-id", client_secret="a-secret")
         auth_manager = client._spotify.kwargs.get("auth_manager")
         self.assertIsInstance(auth_manager.cache_handler, MemoryCacheHandler)
 
     def test_client_is_built_with_a_plain_requests_session(self):
-        client = self.client_module.SpotifyClient(
-            client_id="an-id", client_secret="a-secret",
-        )
+        client = SpotifyClient(client_id="an-id", client_secret="a-secret")
         kwargs = client._spotify.kwargs
         self.assertIsInstance(kwargs.get("requests_session"), requests.Session)
         self.assertNotIn("retries", kwargs)
-
-
-if __name__ == "__main__":
-    unittest.main()

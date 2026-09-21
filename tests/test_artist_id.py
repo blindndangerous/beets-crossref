@@ -1,14 +1,11 @@
 """Tests for spotify_artist_id: writes at every match site, and clearing."""
-import pathlib
-import sys
 import unittest
 from unittest import mock
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-
 from fakes import FakeAlbum, FakeItem
-from plugin_test_utils import fresh_plugin, load_package
+from plugin_test_utils import fresh_plugin
 
+from beetsplug.spotify_album_match import helpers
 from beetsplug.spotify_album_match.helpers import own_artist_id
 
 ALBUM_ID = "albumid000000000000000"
@@ -34,10 +31,6 @@ def spotify_track(track_id, name, artist_id, *, track_number=1, duration_ms=1800
 
 
 class AlbumMatchWritesArtistIdTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-
     def setUp(self):
         self.plugin = fresh_plugin()
         self.plugin.config.data["min_track_artist_score"] = 0.55
@@ -269,10 +262,6 @@ class AlbumStoreInheritGuardTests(unittest.TestCase):
     hand an item an ID that is not its own, or delete one that is.
     """
 
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-
     def setUp(self):
         self.plugin = fresh_plugin()
         self.plugin.config.data["min_track_artist_score"] = 0.55
@@ -397,10 +386,6 @@ class AlbumStoreInheritGuardTests(unittest.TestCase):
 class StaleArtistIdTests(unittest.TestCase):
     """A stored artist ID must always belong to the currently stored album/track ID."""
 
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-
     def setUp(self):
         self.plugin = fresh_plugin()
         self.plugin.config.data["min_track_artist_score"] = 0.55
@@ -493,29 +478,19 @@ class StaleArtistIdTests(unittest.TestCase):
 
 
 class PrimaryArtistIdTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-        cls.helpers = __import__("beetsplug.spotify_album_match.helpers", fromlist=["x"])
-
     def test_returns_cleaned_primary_artist_id(self):
         obj = {"artists": [{"id": ARTIST_ALBUM}, {"id": ARTIST_TRACK_1}]}
-        self.assertEqual(self.helpers.primary_artist_id(obj), ARTIST_ALBUM)
+        self.assertEqual(helpers.primary_artist_id(obj), ARTIST_ALBUM)
 
     def test_returns_none_for_unusable_shapes(self):
         for obj in (None, {}, {"artists": None}, {"artists": []},
                     {"artists": ["not a dict"]}, {"artists": [{"name": "No ID"}]},
                     {"artists": [{"id": "bad"}]}):
-            self.assertIsNone(self.helpers.primary_artist_id(obj), obj)
+            self.assertIsNone(helpers.primary_artist_id(obj), obj)
 
 
 class OwnArtistIdTests(unittest.TestCase):
     """own_artist_id reads the object's own storage, never the album fallback."""
-
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-        cls.helpers = __import__("beetsplug.spotify_album_match.helpers", fromlist=["x"])
 
     def test_reads_the_items_own_value_not_the_albums(self):
         item = FakeItem("Track 1")
@@ -526,28 +501,24 @@ class OwnArtistIdTests(unittest.TestCase):
         self.assertEqual(item.get("spotify_artist_id"), ARTIST_ALBUM)
         self.assertIn("spotify_artist_id", item)
         # The helper is not fooled by it.
-        self.assertIsNone(self.helpers.own_artist_id(item))
-        self.assertEqual(self.helpers.own_artist_id(album), ARTIST_ALBUM)
+        self.assertIsNone(helpers.own_artist_id(item))
+        self.assertEqual(helpers.own_artist_id(album), ARTIST_ALBUM)
 
         item["spotify_artist_id"] = ARTIST_TRACK_1
-        self.assertEqual(self.helpers.own_artist_id(item), ARTIST_TRACK_1)
+        self.assertEqual(helpers.own_artist_id(item), ARTIST_TRACK_1)
 
     def test_discard_tolerates_a_value_that_belongs_to_the_album(self):
         item = FakeItem("Track 1")
         album = FakeAlbum("Album", "Artist", items=[item])
         album["spotify_artist_id"] = ARTIST_ALBUM
 
-        self.helpers.discard_artist_id(item)
+        helpers.discard_artist_id(item)
 
-        self.assertIsNone(self.helpers.own_artist_id(item))
+        self.assertIsNone(helpers.own_artist_id(item))
         self.assertEqual(album.get("spotify_artist_id"), ARTIST_ALBUM)
 
 
 class ClearArtistIdTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-
     def setUp(self):
         self.plugin = fresh_plugin()
 
@@ -565,6 +536,8 @@ class ClearArtistIdTests(unittest.TestCase):
         self.assertNotIn("spotify_artist_id", album)
         self.assertNotIn("spotify_track_id", item)
         self.assertNotIn("spotify_artist_id", item)
+        self.assertGreater(album.store_calls, 0)
+        self.assertEqual(item.store_calls, 1)
 
     def test_clear_all_ids_dry_run_keeps_artist_ids(self):
         item = FakeItem("Track 1", track=1, disc=1)
@@ -576,8 +549,12 @@ class ClearArtistIdTests(unittest.TestCase):
 
         self.plugin.clear_all_ids(album, dry_run=True)
 
+        self.assertEqual(album.get("spotify_album_id"), ALBUM_ID)
         self.assertEqual(album.get("spotify_artist_id"), ARTIST_ALBUM)
+        self.assertEqual(item.get("spotify_track_id"), TRACK_ID_1)
         self.assertEqual(item.get("spotify_artist_id"), ARTIST_TRACK_1)
+        self.assertEqual(album.store_calls, 0)
+        self.assertEqual(item.store_calls, 0)
 
     def test_clear_track_ids_removes_artist_id(self):
         self.plugin.config.data["clear_unmatched_track_ids"] = True
@@ -589,6 +566,7 @@ class ClearArtistIdTests(unittest.TestCase):
 
         self.assertNotIn("spotify_track_id", item)
         self.assertNotIn("spotify_artist_id", item)
+        self.assertEqual(item.store_calls, 1)
 
     def test_clear_malformed_stored_ids_removes_malformed_artist_id(self):
         item = FakeItem("Track 1", track=1, disc=1)
@@ -628,10 +606,6 @@ class AlbumFallbackTests(unittest.TestCase):
     Nothing may crash on that, and nothing may treat the album's value as if
     it belonged to the item.
     """
-
-    @classmethod
-    def setUpClass(cls):
-        load_package()
 
     def setUp(self):
         self.plugin = fresh_plugin()
@@ -711,28 +685,3 @@ class AlbumFallbackTests(unittest.TestCase):
         ]
         self.assertEqual(len(warnings), 1, warnings)
         self.assertIn("'Album'", warnings[0])
-
-
-class ArtistIdFieldRegistrationTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-
-    def setUp(self):
-        self.plugin = fresh_plugin()
-
-    def test_album_types_declares_spotify_artist_id(self):
-        album_types = type(self.plugin).album_types
-        self.assertIsInstance(album_types, dict)
-        self.assertFalse(callable(album_types))
-        self.assertIn("spotify_artist_id", album_types)
-
-    def test_item_types_declares_spotify_artist_id(self):
-        item_types = type(self.plugin).item_types
-        self.assertIsInstance(item_types, dict)
-        self.assertFalse(callable(item_types))
-        self.assertIn("spotify_artist_id", item_types)
-
-
-if __name__ == "__main__":
-    unittest.main()

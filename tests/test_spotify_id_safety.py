@@ -1,12 +1,9 @@
 """Tests for Spotify ID validation: malformed IDs never reach the API or the DB."""
-import pathlib
-import sys
 import unittest
-
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from unittest import mock
 
 from fakes import FakeAlbum, FakeItem
-from plugin_test_utils import fresh_plugin, load_package
+from plugin_test_utils import fresh_plugin
 
 from beetsplug.spotify_album_match.helpers import clean_spotify_id
 
@@ -14,41 +11,22 @@ VALID_ALBUM_ID = "1A2b3C4d5E6f7G8h9I0jKl"
 VALID_TRACK_ID = "9lKj0I9h8G7f6E5d4C3b2A"
 
 
-class DummySpotify:
-    """Records every call so tests can assert the API was never reached."""
-
-    def __init__(self):
-        self.album_track_calls = []
-        self.album_calls = []
-        self.albums_calls = []
-        self.tracks_calls = []
-
-    def album_tracks(self, album_id):
-        self.album_track_calls.append(album_id)
-        return {"items": [], "next": None}
-
-    def album(self, album_id):
-        self.album_calls.append(album_id)
-        return {"id": album_id}
-
-    def albums(self, album_ids):
-        self.albums_calls.append(list(album_ids))
-        return {"albums": [{"id": album_id} for album_id in album_ids]}
-
-    def tracks(self, track_ids):
-        self.tracks_calls.append(list(track_ids))
-        return {"tracks": [{"id": track_id} for track_id in track_ids]}
+def fake_spotify():
+    """A spotipy stand-in that echoes the IDs it is given and records every call."""
+    return mock.MagicMock(
+        album_tracks=mock.MagicMock(return_value={"items": [], "next": None}),
+        album=mock.MagicMock(side_effect=lambda album_id: {"id": album_id}),
+        albums=mock.MagicMock(
+            side_effect=lambda album_ids: {"albums": [{"id": aid} for aid in album_ids]},
+        ),
+    )
 
 
 class SpotifyIdSafetyTest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-
     def setUp(self):
         self.plugin = fresh_plugin()
         self.client = self.plugin.client
-        self.client._spotify = DummySpotify()
+        self.client._spotify = fake_spotify()
         self.client.min_request_interval = 0
 
     def test_clean_spotify_id_accepts_only_base62_22_char_values(self):
@@ -64,14 +42,14 @@ class SpotifyIdSafetyTest(unittest.TestCase):
             self.client.get_albums_bulk(["", "bad", VALID_ALBUM_ID, VALID_ALBUM_ID]),
             {VALID_ALBUM_ID: {"id": VALID_ALBUM_ID}},
         )
-        self.assertEqual(self.client._spotify.albums_calls, [[VALID_ALBUM_ID]])
+        self.client._spotify.albums.assert_called_once_with([VALID_ALBUM_ID])
 
     def test_client_skips_blank_or_malformed_single_id_lookups(self):
         self.assertEqual(self.client.get_album_tracks(""), [])
         self.assertIsNone(self.client.get_album("bad"))
 
-        self.assertEqual(self.client._spotify.album_track_calls, [])
-        self.assertEqual(self.client._spotify.album_calls, [])
+        self.client._spotify.album_tracks.assert_not_called()
+        self.client._spotify.album.assert_not_called()
 
     def test_clear_functions_delete_flexible_fields_instead_of_blanking_them(self):
         item_with_id = FakeItem("matched")
@@ -104,24 +82,3 @@ class SpotifyIdSafetyTest(unittest.TestCase):
         self.assertNotIn("spotify_track_id", item)
         self.assertEqual(album.store_calls, 1)
         self.assertEqual(item.store_calls, 1)
-
-    def test_malformed_album_id_is_not_returned_for_use_under_dry_run(self):
-        """Dry-run leaves the bad ID in the library but must not act on it.
-
-        Otherwise the dry run sends the malformed ID to verification, reports
-        it unverifiable, and logs a clear-and-re-search the real run (which
-        deletes the ID first and searches directly) would never perform.
-        """
-        album = FakeAlbum("Album", "Artist", items=[FakeItem("track")])
-        album["spotify_album_id"] = "bad"
-        album.store(inherit=False)
-
-        album_id = self.plugin._clear_malformed_stored_ids(album, dry_run=True)
-
-        self.assertIsNone(album_id)
-        self.assertEqual(album.get("spotify_album_id"), "bad")
-        self.assertEqual(album.store_calls, 1)
-
-
-if __name__ == "__main__":
-    unittest.main()

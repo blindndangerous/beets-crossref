@@ -1,19 +1,11 @@
-"""Tests for matching.py: AlbumMatcher candidate selection and track scoring."""
-import pathlib
-import sys
+"""Tests for matching.py: AlbumMatcher candidate selection."""
 import unittest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-
 from fakes import FakeAlbum
-from plugin_test_utils import fresh_plugin, load_package
+from plugin_test_utils import fresh_plugin
 
 
 class AlbumMatcherSelectionTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        load_package()
-
     def setUp(self):
         self.plugin = fresh_plugin()
         self.matcher = self.plugin.matcher
@@ -107,6 +99,3 @@ class AlbumMatcherSelectionTests(unittest.TestCase):
         )
         self.assertEqual(selected["id"], "accurate_low_pop")
 
-
-if __name__ == "__main__":
-    unittest.main()

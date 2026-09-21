@@ -1,9 +1,8 @@
-import pathlib
-import sys
+"""Tests for helpers.py: normalization, query building, track matching."""
 import unittest
-from dataclasses import dataclass
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+import pytest
+from fakes import FakeItem
 
 from beetsplug.spotify_album_match.helpers import (
     artist_set_score,
@@ -18,14 +17,37 @@ from beetsplug.spotify_album_match.helpers import (
 )
 
 
-@dataclass
-class DummyItem:
-    title: str
-    artist: str = ""
-    albumartist: str = ""
-    track: int = 0
-    disc: int = 0
-    length: float = 0.0
+@pytest.mark.parametrize(("text", "expected"), [
+    ("Album (Deluxe Edition)", "Album"),
+    ("Album [Remastered]", "Album"),
+    ("Album - Remastered", "Album"),
+    ("Remastered Album", "Album"),
+    ("Simple Album Title", "Simple Album Title"),
+    ("", ""),
+    (None, ""),
+])
+def test_strip_version_tokens(text, expected):
+    assert strip_version_tokens(text) == expected
+
+
+@pytest.mark.parametrize(("text", "expected"), [
+    ("Album (Deluxe Edition)", "album"),
+    ("Hello, World!", "hello world"),
+    ("", ""),
+])
+def test_normalize_title(text, expected):
+    assert normalize_title(text) == expected
+
+
+@pytest.mark.parametrize(("text", "expected"), [
+    ("Album (Deluxe Edition)", True),
+    ("Some Album Remastered", True),
+    ("Plain Album Title", False),
+    ("", False),
+    (None, False),
+])
+def test_is_variant_title(text, expected):
+    assert is_variant_title(text) is expected
 
 
 class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
@@ -50,7 +72,7 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         self.assertEqual(split_artist_tokens("Artist / Producer"), ["artist", "producer"])
 
     def test_track_matching_prefers_title_over_track_number_only(self):
-        item = DummyItem(
+        item = FakeItem(
             title="Song A",
             artist="Artist",
             albumartist="Artist",
@@ -81,7 +103,7 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         self.assertEqual(match["id"], "good")
 
     def test_track_matching_rejects_low_confidence_position_only_match(self):
-        item = DummyItem(
+        item = FakeItem(
             title="Song A",
             artist="Artist",
             albumartist="Artist",
@@ -104,7 +126,7 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         self.assertIsNone(match)
 
     def test_track_matching_rejects_different_artist_even_with_near_title(self):
-        item = DummyItem(
+        item = FakeItem(
             title="Scream at the Walls",
             artist="10 Years",
             albumartist="10 Years",
@@ -132,42 +154,10 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         )
         self.assertIsNone(match)
 
-    # --- strip_version_tokens ---
-
-    def test_strip_version_tokens_removes_bracketed_keyword(self):
-        self.assertEqual(strip_version_tokens("Album (Deluxe Edition)"), "Album")
-
-    def test_strip_version_tokens_removes_square_bracket_keyword(self):
-        self.assertEqual(strip_version_tokens("Album [Remastered]"), "Album")
-
-    def test_strip_version_tokens_removes_trailing_dash_keyword(self):
-        self.assertEqual(strip_version_tokens("Album - Remastered"), "Album")
-
-    def test_strip_version_tokens_removes_inline_keyword(self):
-        self.assertEqual(strip_version_tokens("Remastered Album"), "Album")
-
-    def test_strip_version_tokens_no_change_without_keywords(self):
-        self.assertEqual(strip_version_tokens("Simple Album Title"), "Simple Album Title")
-
-    def test_strip_version_tokens_empty_returns_empty(self):
-        self.assertEqual(strip_version_tokens(""), "")
-        self.assertEqual(strip_version_tokens(None), "")
-
-    # --- normalize_title ---
-
-    def test_normalize_title_strips_version_tokens_and_brackets(self):
-        self.assertEqual(normalize_title("Album (Deluxe Edition)"), "album")
-
     def test_normalize_title_strips_feat_clause(self):
         result = normalize_title("Song feat. Someone Else")
         self.assertNotIn("feat", result)
         self.assertNotIn("someone", result)
-
-    def test_normalize_title_lowercases_and_removes_punctuation(self):
-        self.assertEqual(normalize_title("Hello, World!"), "hello world")
-
-    def test_normalize_title_empty_returns_empty(self):
-        self.assertEqual(normalize_title(""), "")
 
     def test_normalize_title_keeps_titles_made_only_of_variant_keywords(self):
         # "Live", "Bonus" and friends strip to nothing; without a fallback such
@@ -175,21 +165,6 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         self.assertEqual(normalize_title("Bonus"), "bonus")
         self.assertEqual(normalize_title("Live"), "live")
         self.assertEqual(fuzzy_title_score("Bonus", "Bonus"), 1.0)
-
-    # --- is_variant_title ---
-
-    def test_is_variant_title_true_for_deluxe(self):
-        self.assertTrue(is_variant_title("Album (Deluxe Edition)"))
-
-    def test_is_variant_title_true_for_remastered(self):
-        self.assertTrue(is_variant_title("Some Album Remastered"))
-
-    def test_is_variant_title_false_for_plain_title(self):
-        self.assertFalse(is_variant_title("Plain Album Title"))
-
-    def test_is_variant_title_false_for_empty(self):
-        self.assertFalse(is_variant_title(""))
-        self.assertFalse(is_variant_title(None))
 
     # --- artist_set_score ---
 
@@ -215,7 +190,7 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         exactly the default track_match_threshold, so any title deviation at
         all fails. fuzzy_title_score("Song Pt. 1", "Song, Part 1") is 0.90.
         """
-        item = DummyItem(
+        item = FakeItem(
             title="Song Pt. 1", artist="Artist", albumartist="Artist",
             track=1, disc=0, length=300.0,
         )
@@ -240,7 +215,7 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         With disc 0 disabling the position bonus, the second movement was
         assigned the first movement's Spotify ID.
         """
-        movement_two = DummyItem(
+        movement_two = FakeItem(
             title="Suite (II. Adagio)", artist="Artist", albumartist="Artist",
             track=2, disc=0, length=302.0,
         )
@@ -263,7 +238,7 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         self.assertEqual(match["id"], "movement_two")
 
     def test_track_matching_does_not_bonus_across_different_discs(self):
-        item = DummyItem(
+        item = FakeItem(
             title="Song", artist="Artist", albumartist="Artist", track=1, disc=2,
         )
         tracks = [{
@@ -282,13 +257,12 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
     def test_track_matching_large_duration_diff_applies_penalty(self):
         # Both tracks have identical title/artist; the one with wildly different duration
         # should score lower due to the penalty.
-        item = DummyItem(title="Song", artist="Artist", length=200.0)
+        item = FakeItem(title="Song", artist="Artist", length=200.0)
         tracks = [
             {
                 "id": "close_duration",
                 "name": "Song",
                 "artists": [{"name": "Artist"}],
-                "external_ids": {},
                 "track_number": 1,
                 "disc_number": 1,
                 "duration_ms": 201000,  # 1 second off → bonus
@@ -297,7 +271,6 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
                 "id": "far_duration",
                 "name": "Song",
                 "artists": [{"name": "Artist"}],
-                "external_ids": {},
                 "track_number": 2,
                 "disc_number": 1,
                 "duration_ms": 260000,  # 60 seconds off → penalty
@@ -311,13 +284,12 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
 
     def test_track_matching_large_duration_diff_can_cause_no_match(self):
         # If only a far-duration track exists, penalty can push score below threshold.
-        item = DummyItem(title="Song", artist="Artist", length=200.0)
+        item = FakeItem(title="Song", artist="Artist", length=200.0)
         tracks = [
             {
                 "id": "only_track",
                 "name": "Song",
                 "artists": [{"name": "Artist"}],
-                "external_ids": {},
                 "track_number": 1,
                 "disc_number": 1,
                 "duration_ms": 380000,  # 180 seconds off
@@ -338,13 +310,12 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         self.assertIsNone(match_strict)
 
     def test_track_matching_small_duration_diff_gives_bonus(self):
-        item = DummyItem(title="Song", artist="Artist", length=200.0)
+        item = FakeItem(title="Song", artist="Artist", length=200.0)
         tracks_bonus = [
             {
                 "id": "close",
                 "name": "Song",
                 "artists": [{"name": "Artist"}],
-                "external_ids": {},
                 "track_number": 1,
                 "disc_number": 1,
                 "duration_ms": 202000,  # 2s off → within tolerance → +0.05 bonus
@@ -355,7 +326,6 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
                 "id": "mid",
                 "name": "Song",
                 "artists": [{"name": "Artist"}],
-                "external_ids": {},
                 "track_number": 1,
                 "disc_number": 1,
                 "duration_ms": 206000,  # 6s off → outside tolerance, inside penalty threshold → no adjustment
@@ -374,7 +344,3 @@ class SpotifyAlbumMatchHelpersTests(unittest.TestCase):
         )
         self.assertIsNotNone(match_bonus)
         self.assertIsNone(match_no_bonus)
-
-
-if __name__ == "__main__":
-    unittest.main()
