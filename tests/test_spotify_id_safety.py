@@ -66,12 +66,6 @@ class SpotifyIdSafetyTest(unittest.TestCase):
         )
         self.assertEqual(self.client._spotify.albums_calls, [[VALID_ALBUM_ID]])
 
-        self.assertEqual(
-            self.client.get_tracks_bulk(["", "bad", VALID_TRACK_ID, VALID_TRACK_ID]),
-            {VALID_TRACK_ID: {"id": VALID_TRACK_ID}},
-        )
-        self.assertEqual(self.client._spotify.tracks_calls, [[VALID_TRACK_ID]])
-
     def test_client_skips_blank_or_malformed_single_id_lookups(self):
         self.assertEqual(self.client.get_album_tracks(""), [])
         self.assertIsNone(self.client.get_album("bad"))
@@ -127,13 +121,6 @@ class SpotifyIdSafetyTest(unittest.TestCase):
         self.assertIsNone(album_id)
         self.assertEqual(album.get("spotify_album_id"), "bad")
         self.assertEqual(album.store_calls, 1)
-
-    def test_bulk_track_lookup_reuses_the_details_cache(self):
-        first = self.client.get_tracks_bulk([VALID_TRACK_ID])
-        second = self.client.get_tracks_bulk([VALID_TRACK_ID])
-
-        self.assertEqual(first, second)
-        self.assertEqual(self.client._spotify.tracks_calls, [[VALID_TRACK_ID]])
 
 
 if __name__ == "__main__":

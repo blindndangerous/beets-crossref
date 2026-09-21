@@ -37,31 +37,6 @@ touches the album. This is why beets 2.2 or newer is required: earlier releases 
 `beet ls spotify_album_id:4aawyAB9vmqN3uQ7FjRGTy` still work, because beets lets an item
 read its album's value for a field the item does not have.
 
-If your library was matched by an earlier version of this plugin, some tracks already own
-a copy of their album's artist ID, written before this was fixed. Nothing heals those
-automatically: the plugin cannot tell a copied value from one a track earned. Run once
-with `-f` to re-match and rewrite them.
-
-## Backfilling artist IDs
-
-Albums matched before `spotify_artist_id` existed are filled in without being
-re-matched. When an album has a stored `spotify_album_id` or stored
-`spotify_track_id`s but is missing the matching artist IDs of its own, the plugin looks
-up the stored album and its track list and writes the artist IDs from them, then logs
-one line such as
-`Backfilled artist IDs for 'Portishead - Dummy': album=yes, tracks=12`. Tracks are
-backfilled with their own artist, never with the album's: beets lets a track read its
-album's value for a field it does not have, and the backfill ignores that so a
-compilation still ends up with one artist ID per track. A track that is not on the stored
-album (a bonus track matched from a related release, say) is resolved in a single bulk
-request. No search is performed, nothing is re-matched, and an album that already has all
-of its artist IDs costs zero API calls. Under `--dry-run` nothing is written.
-
-Backfilling only avoids a fresh search for the IDs that are already stored; it is not a
-substitute for a run. Once it is done the normal match path continues as usual, so an
-album that is not yet fully matched is still searched, matched and repaired in the same
-run.
-
 On a later run a stored album ID is re-checked by title and artist, and each
 stored track ID by its position on the album. ISRCs are compared only where
 Spotify supplies them, which is on track search results: the track list of an

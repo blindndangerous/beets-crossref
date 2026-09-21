@@ -20,7 +20,6 @@ from .helpers import (
     clean_spotify_id,
     discard_artist_id,
     own_artist_id,
-    primary_artist_id,
     set_artist_id,
 )
 from .matching import AlbumMatcher
@@ -56,15 +55,6 @@ CONFIG_DEFAULTS = {
     'duration_mismatch_penalty': 0.10,            # penalty subtracted from score on large diff
     'existing_album_validation_threshold': 0.90,  # min score for stored album to pass identity check
 }
-
-
-def _needs_own_artist_id(obj, id_field):
-    """True when obj stores a valid ID in id_field but no artist ID of its own.
-
-    A beets Item with no artist ID reads its album's through ``get``/``in``, so
-    the album's value must never count as the item's.
-    """
-    return bool(clean_spotify_id(obj.get(id_field))) and not own_artist_id(obj)
 
 
 class SpotifyAlbumMatchPlugin(BeetsPlugin):
@@ -181,8 +171,6 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
                 log.error(f"Error processing album '{album.album}': {exc}")
 
     def _process_single_album(self, album, dry_run, interactive, force, provided_album_id=None):
-        # Counted from here so the "API calls for album" figure includes the
-        # backfill lookups below.
         self.client.reset_call_count()
         # The returned ID is the one to use from here on: under --dry-run a
         # malformed stored ID is reported but not deleted, and passing it on
@@ -192,9 +180,6 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
         if provided_album_id:
             self._apply_provided_album_id(album, provided_album_id, dry_run, force)
             return
-
-        if self._needs_artist_id_backfill(album):
-            self._backfill_artist_ids(album, dry_run, album_id=existing_album_id)
 
         verify_existing = self.config['verify_existing_ids'].get(bool)
         if not force and not verify_existing and all(item.get('spotify_track_id') for item in album.items()):
@@ -302,85 +287,6 @@ class SpotifyAlbumMatchPlugin(BeetsPlugin):
         return self.matcher.match_items_to_tracks(
             list(album.items()), spotify_tracks, dry_run, overwrite=True,
         )
-
-    # ------------------------------------------------------------------
-    # Artist ID backfill for albums matched before spotify_artist_id existed
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _needs_artist_id_backfill(album):
-        """True when a stored album/track ID has no own spotify_artist_id beside it."""
-        if _needs_own_artist_id(album, 'spotify_album_id'):
-            return True
-        return any(
-            _needs_own_artist_id(item, 'spotify_track_id') for item in album.items()
-        )
-
-    def _backfill_artist_ids(self, album, dry_run, album_id=None):
-        """Fill missing artist IDs from the already-stored album/track IDs.
-
-        Never re-matches: the stored IDs are trusted and only looked up.
-        """
-        log_prefix = self._log_prefix(dry_run)
-        if album_id is None:
-            album_id = clean_spotify_id(album.get('spotify_album_id'))
-
-        # Pick the pending items BEFORE the album's artist ID is stored: once it
-        # is, every item without its own reads the album's through the fallback
-        # and would look already filled.
-        pending_items = [
-            item for item in album.items()
-            if _needs_own_artist_id(item, 'spotify_track_id')
-        ]
-
-        album_filled = False
-        if _needs_own_artist_id(album, 'spotify_album_id'):
-            artist_id = primary_artist_id(self.client.get_album(album_id))
-            if artist_id:
-                album_filled = True
-                if not dry_run:
-                    album['spotify_artist_id'] = artist_id
-                    album.store(inherit=False)
-
-        tracks_filled = 0
-        if pending_items:
-            album_track_map = {}
-            if album_id:
-                for track in self.client.get_album_tracks(album_id) or []:
-                    track_id = track.get('id')
-                    if track_id:
-                        album_track_map[track_id] = track
-            # Tracks matched from a related release are not on this album; resolve
-            # them in one bulk request rather than one lookup per track.
-            missing_ids = [
-                track_id for track_id in (
-                    clean_spotify_id(item.get('spotify_track_id')) for item in pending_items
-                )
-                if track_id not in album_track_map
-            ]
-            if missing_ids:
-                album_track_map.update(self.client.get_tracks_bulk(missing_ids))
-
-            for item in pending_items:
-                track_id = clean_spotify_id(item.get('spotify_track_id'))
-                artist_id = primary_artist_id(album_track_map.get(track_id))
-                if not artist_id:
-                    log.debug(f"No usable primary Spotify artist ID for '{item.title}'.")
-                    continue
-                tracks_filled += 1
-                if not dry_run:
-                    item['spotify_artist_id'] = artist_id
-                    item.store()
-
-        summary = (
-            f"{log_prefix}Backfilled artist IDs for "
-            f"'{album.albumartist} - {album.album}': "
-            f"album={'yes' if album_filled else 'no'}, tracks={tracks_filled}"
-        )
-        if album_filled or tracks_filled:
-            log.info(summary)
-        else:
-            log.debug(summary)
 
     # ------------------------------------------------------------------
     # ID clearing (IdClearer interface used by AlbumRepairer)

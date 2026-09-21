@@ -49,7 +49,6 @@ class SpotifyClient:
 
         self._album_tracks_cache = TTLCache(maxsize=512, ttl=cache_ttl)
         self._album_details_cache = TTLCache(maxsize=512, ttl=cache_ttl)
-        self._track_details_cache = TTLCache(maxsize=1024, ttl=cache_ttl)
         # Search results cached with a shorter TTL to deduplicate repeated queries
         # within a single run (related-release repair re-runs the same album searches).
         self._search_cache = TTLCache(maxsize=256, ttl=min(cache_ttl, 300))
@@ -173,53 +172,6 @@ class SpotifyClient:
                     if items and not tracks.get('next'):
                         with self._cache_lock:
                             self._album_tracks_cache[album_id] = items
-        return details_by_id
-
-    def get_tracks_bulk(self, track_ids):
-        """Return a {track_id: track_dict} map for many IDs (batched 50 at a time).
-
-        Checks _track_details_cache first, the same way get_albums_bulk does,
-        so IDs already fetched earlier in a run cost no API call.
-        """
-        if not track_ids:
-            return {}
-        unique_ids = list(
-            dict.fromkeys(
-                clean_id for tid in track_ids
-                if (clean_id := clean_spotify_id(tid))
-            )
-        )
-
-        details_by_id = {}
-        uncached_ids = []
-        with self._cache_lock:
-            for track_id in unique_ids:
-                cached = self._track_details_cache.get(track_id)
-                if cached is not None:
-                    details_by_id[track_id] = cached
-                else:
-                    uncached_ids.append(track_id)
-
-        if uncached_ids:
-            log.debug(f"Bulk-fetching {len(uncached_ids)} track(s) not in cache.")
-        for i in range(0, len(uncached_ids), 50):
-            chunk = uncached_ids[i:i + 50]
-            try:
-                results = self._retry_request(self._spotify.tracks, chunk)
-            except SpotifyException as e:
-                log.warning(f"Could not fetch track details for IDs {chunk}: {e}")
-                continue
-
-            tracks = results.get('tracks', []) if isinstance(results, dict) else []
-            for track in tracks:
-                if not track or not isinstance(track, dict):
-                    continue
-                track_id = track.get('id')
-                if not track_id:
-                    continue
-                details_by_id[track_id] = track
-                with self._cache_lock:
-                    self._track_details_cache[track_id] = track
         return details_by_id
 
     def search(self, **kwargs):
