@@ -13,6 +13,7 @@ and friends afterwards for what they own.
 from __future__ import annotations
 
 import logging
+import re
 from collections import Counter
 
 from beets import ui
@@ -185,8 +186,11 @@ class CrossrefPlugin(BeetsPlugin):
                 if album_id:
                     yield album_id
         elif method == "barcode":
-            if album.barcode:
-                album_id = source.album_by_barcode(album.barcode)
+            # Barcodes are stored with spaces or dashes at times ("6 02537 69154 8");
+            # sent as-is, Deezer answers 403, which reads as the service refusing us.
+            barcode = re.sub(r"\D", "", album.barcode or "")
+            if barcode:
+                album_id = source.album_by_barcode(barcode)
                 if album_id:
                     yield album_id
         elif method == "isrc":

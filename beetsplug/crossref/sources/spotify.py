@@ -53,7 +53,9 @@ class SpotifySource(Source):
         config["client_secret"].redact = True
         self.client_id = config["client_id"].get(None)
         self.client_secret = config["client_secret"].get(None)
-        self.client = JsonClient("spotify", API_URL, min_interval=0.5)
+        # Development-mode apps get a low, unpublished limit; 2 requests a second
+        # earned a 19-hour ban, so stay at one.
+        self.client = JsonClient("spotify", API_URL, min_interval=1.0)
         self._expires = 0.0
 
     @property

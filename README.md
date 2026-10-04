@@ -56,7 +56,7 @@ credentials is skipped with a warning.
 
 Each source waits between requests to stay under its published rate limit
 (MusicBrainz 1 per second, Deezer about 9 per second, Apple 1 every 3
-seconds, Discogs 1 per second, Last.fm and Spotify 2 per second) and honours
+seconds, Discogs 1 per second, Last.fm 2 per second, Spotify 1 per second) and honours
 `Retry-After`. Apple is by far the slowest: a whole library takes many hours.
 Do not run two programs that query MusicBrainz from the same network at once.
 

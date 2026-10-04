@@ -353,3 +353,12 @@ def test_config_sources_pick_the_sources(env, monkeypatch):
     env.plugin.config["sources"] = ["typo"]
     with pytest.raises(ui.UserError):
         env.plugin._sources("", env.cache)
+
+
+def test_barcode_reaches_sources_as_digits_only(env):
+    album = make_album(env.lib, barcode="6 02537 69154-8")
+    src = FakeSource()
+    src.by_barcode = {"602537691548": "7"}
+    src.tracklists = {"7": hits()}
+    run_resolve(env, [album], [src])
+    assert reload(env, album)[0].fake_album_id == "7"
