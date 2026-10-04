@@ -78,6 +78,15 @@ def test_barcode_not_found_is_cached(source):
     assert len(source.calls) == asked
 
 
+def test_barcode_hit_needs_no_second_request_for_the_tracks(source):
+    rows = [dict(r, collectionId=55) for r in ALBUM_PAYLOAD["results"]]
+    stub(source, {"resultCount": 3, "results": rows})
+    assert source.album_by_barcode("602537868858") == "55"
+    asked = len(source.calls)
+    assert [h.id for h in source.album_tracks("55")] == ["501", "502"]
+    assert len(source.calls) == asked
+
+
 def test_missing_is_not_cached(source):
     stub(source, MISSING)
     assert source.album_tracks("55") is None

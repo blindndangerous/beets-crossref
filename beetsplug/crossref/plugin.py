@@ -55,7 +55,7 @@ class CrossrefPlugin(BeetsPlugin):
     def __init__(self):
         super().__init__("crossref")
         self.config.add({
-            "sources": ["spotify", "deezer", "itunes", "discogs", "lastfm"],
+            "disable": [],  # sources never to use; every other source runs
             "cache": "",  # default: crossref_cache.db in the beets config dir
             "cache_days": 30,
         })
@@ -64,7 +64,7 @@ class CrossrefPlugin(BeetsPlugin):
         cmd = ui.Subcommand("crossref", help="find albums on other services and fetch what they know")
         cmd.parser.usage = "%prog resolve|fetch [options] [QUERY]"
         cmd.parser.add_option("-s", "--source", dest="sources", default="",
-                              help="comma-separated sources (default: all configured)")
+                              help="only these comma-separated sources (default: all not disabled)")
         cmd.parser.add_option("-p", "--pretend", action="store_true", help="show changes, write nothing")
         cmd.func = self._command
         return [cmd]
@@ -78,12 +78,13 @@ class CrossrefPlugin(BeetsPlugin):
         return Cache(path or f"{config.config_dir()}/crossref_cache.db", self.config["cache_days"].get(float))
 
     def _sources(self, names: str, cache: Cache) -> list[Source]:
-        wanted = [n.strip() for n in names.split(",") if n.strip()] or self.config["sources"].as_str_seq()
-        unknown = [n for n in wanted if n not in REGISTRY]
+        chosen = [n.strip() for n in names.split(",") if n.strip()] or list(REGISTRY)
+        disabled = self.config["disable"].as_str_seq()
+        unknown = [n for n in chosen + disabled if n not in REGISTRY]
         if unknown:
             raise ui.UserError(f"unknown source(s): {', '.join(unknown)}; known: {', '.join(REGISTRY)}")
         sources = []
-        for name in wanted:
+        for name in (n for n in chosen if n not in disabled):
             source = load(name)(self.config[name], cache)
             if source.ready:
                 sources.append(source)

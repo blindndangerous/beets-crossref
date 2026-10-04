@@ -335,3 +335,14 @@ def test_command_rejects_unknown_source_and_action(env, monkeypatch):
         env.plugin._command(env.lib, opts, ["resolve"])
     with pytest.raises(ui.UserError):
         env.plugin._command(env.lib, opts, ["bogus"])
+
+
+def test_disable_drops_a_source_and_rejects_unknown_names(env, monkeypatch):
+    monkeypatch.setattr(plugin_mod, "REGISTRY", {"a": "x:Y", "b": "x:Y"})
+    monkeypatch.setattr(plugin_mod, "load", lambda name: lambda config, cache: FakeSource(name))
+    env.plugin.config["disable"] = ["b"]
+    assert [s.name for s in env.plugin._sources("", env.cache)] == ["a"]
+    assert [s.name for s in env.plugin._sources("b", env.cache)] == []
+    env.plugin.config["disable"] = ["typo"]
+    with pytest.raises(ui.UserError):
+        env.plugin._sources("", env.cache)

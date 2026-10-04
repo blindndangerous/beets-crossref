@@ -60,13 +60,24 @@ class ItunesSource(Source):
         return None
 
     def _barcode(self, code: str):
-        data = self.client.get("lookup", upc=code, country=self.country)
+        """The collection for a barcode.  Asking for its songs in the same call
+        fills the album cache too, so the tracklist check costs no second
+        request at Apple's 20-a-minute pace."""
+        data = self.client.get("lookup", upc=code, entity="song", country=self.country, limit=200)
         if data is MISSING:
             return MISSING
-        for row in (data or {}).get("results", []):
-            if row.get("wrapperType") == "collection" and row.get("collectionId"):
-                return str(row["collectionId"])
-        return None
+        rows = (data or {}).get("results", [])
+        collection = next(
+            (r for r in rows if r.get("wrapperType") == "collection" and r.get("collectionId")), None
+        )
+        if collection is None:
+            return None
+        album_id = str(collection["collectionId"])
+        mine = [r for r in rows if str(r.get("collectionId")) == album_id]
+        key = f"{self.country}:{album_id}"
+        if self.cache.get("itunes-album", key) is MISSING:
+            self.cache.put("itunes-album", key, self._distil(mine))
+        return album_id
 
     def _album(self, album_id: str):
         """Distilled album lookup: collection fields plus tracks; None if unknown."""
@@ -77,7 +88,10 @@ class ItunesSource(Source):
         data = self.client.get("lookup", id=album_id, entity="song", country=self.country, limit=200)
         if data is MISSING:
             return MISSING
-        rows = (data or {}).get("results", [])
+        return self._distil((data or {}).get("results", []))
+
+    @staticmethod
+    def _distil(rows):
         collection = next((r for r in rows if r.get("wrapperType") == "collection"), None)
         if collection is None:
             return None
