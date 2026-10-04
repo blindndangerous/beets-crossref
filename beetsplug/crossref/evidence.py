@@ -2,7 +2,7 @@
 
 Every ID crossref writes is recorded with the method that found it, in a
 sibling field (`deezer_album_id` -> `deezer_album_id_source`).  An ID stored
-by anything else (an import, the old spotify_album_match plugin) has no
+by anything else (an import, another plugin) has no
 record and counts as fuzzy, the weakest evidence.
 """
 

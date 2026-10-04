@@ -362,3 +362,12 @@ def test_barcode_reaches_sources_as_digits_only(env):
     src.tracklists = {"7": hits()}
     run_resolve(env, [album], [src])
     assert reload(env, album)[0].fake_album_id == "7"
+
+
+def test_barcode_hit_sharing_no_track_is_rejected(env):
+    album = make_album(env.lib, barcode="999")
+    src = FakeSource()
+    src.by_barcode = {"999": "wrong-pressing"}
+    src.tracklists = {"wrong-pressing": [TrackHit("x1", 1, 1, 999.0, "OTHER")]}
+    run_resolve(env, [album], [src])
+    assert "fake_album_id" not in reload(env, album)[0]._values_flex

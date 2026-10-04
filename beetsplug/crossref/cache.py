@@ -34,6 +34,9 @@ class Cache:
         self.max_age = max_age_days * 86400.0
         self.conn = sqlite3.connect(self.path)
         self.conn.executescript(_SCHEMA)
+        if self.max_age:
+            self.conn.execute("DELETE FROM entries WHERE fetched_at < ?", (time.time() - self.max_age,))
+            self.conn.commit()
 
     def get(self, namespace: str, key: str) -> Any:
         row = self.conn.execute(

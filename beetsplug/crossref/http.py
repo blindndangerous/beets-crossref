@@ -14,11 +14,12 @@ from typing import Any
 
 import requests
 
+from . import __version__
 from .cache import MISSING
 
 log = logging.getLogger("beets.crossref")
 
-USER_AGENT = "beets-crossref/0.1 ( https://github.com/blindndangerous/beets-crossref )"
+USER_AGENT = f"beets-crossref/{__version__} ( https://github.com/blindndangerous/beets-crossref )"
 
 
 class SourceUnavailable(RuntimeError):
@@ -67,7 +68,10 @@ class JsonClient:
             try:
                 response = self.session.get(url, params=params, timeout=30)
             except requests.RequestException as exc:
-                log.warning("%s: %s failed (%s), retrying in %.0f s", self.name, path, exc, delay)
+                # Not the exception text: it contains the URL, and some services
+                # (Last.fm) take the API key as a query parameter.
+                log.warning("%s: %s failed (%s), retrying in %.0f s",
+                            self.name, path, type(exc).__name__, delay)
                 time.sleep(delay)
                 delay *= 2
                 continue

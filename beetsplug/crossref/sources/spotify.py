@@ -53,8 +53,8 @@ class SpotifySource(Source):
         config["client_secret"].redact = True
         self.client_id = config["client_id"].get(None)
         self.client_secret = config["client_secret"].get(None)
-        # Development-mode apps get a low, unpublished limit; 2 requests a second
-        # earned a 19-hour ban, so stay at one.
+        # Development-mode apps get a low, unpublished rate limit; two requests a
+        # second can earn a Retry-After of many hours, so stay at one.
         self.client = JsonClient("spotify", API_URL, min_interval=1.0)
         self._expires = 0.0
 
@@ -65,13 +65,17 @@ class SpotifySource(Source):
     # --- HTTP ---------------------------------------------------------------
 
     def _token_request(self) -> dict:
-        response = requests.post(
-            TOKEN_URL, data={"grant_type": "client_credentials"},
-            auth=(self.client_id, self.client_secret), timeout=30,
-        )
+        try:
+            response = requests.post(
+                TOKEN_URL, data={"grant_type": "client_credentials"},
+                auth=(self.client_id, self.client_secret), timeout=30,
+            )
+        except requests.RequestException as exc:
+            raise SourceUnavailable(f"spotify token request failed: {type(exc).__name__}") from None
         if response.status_code in (400, 401):
             raise SourceUnavailable(f"spotify rejected the client credentials: HTTP {response.status_code}")
-        response.raise_for_status()
+        if response.status_code != 200:
+            raise SourceUnavailable(f"spotify token request failed: HTTP {response.status_code}")
         return response.json()
 
     def _refresh(self) -> None:

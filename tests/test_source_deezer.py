@@ -43,11 +43,14 @@ def test_error_body_is_not_found_and_cached(source):
     assert asked == ["album/upc:111"]
 
 
-def test_failed_request_is_not_cached(source):
+def test_quota_errors_are_retried_then_not_cached(source, monkeypatch):
+    slept = []
+    monkeypatch.setattr("beetsplug.crossref.sources.deezer.time.sleep", slept.append)
     asked = canned(source, {"album/upc:111": QUOTA})
     assert source.album_by_barcode("111") is None
     assert source.album_by_barcode("111") is None
-    assert len(asked) == 2
+    assert len(asked) == 6  # three tries per lookup
+    assert slept and all(s == 5 for s in slept)
     assert source.cache.get("deezer-upc", "111") is MISSING
 
 

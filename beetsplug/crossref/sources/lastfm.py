@@ -1,8 +1,8 @@
 """Last.fm popularity: playcounts and listener counts for tracks, albums and artists.
 
 Fetch-only, no IDs.  Tracks are grouped by song so every copy of a song costs
-one lookup and gets the same numbers.  Field names and types match the old
-lastfmpop plugin, so stored data and smart playlists keep working.  Anything
+one lookup and gets the same numbers.  Field names and types are kept
+stable, so stored data and smart playlists keep working.  Anything
 updated within `max_age_days` is left alone.
 """
 
@@ -110,7 +110,7 @@ class LastfmSource(Source):
 
     @property
     def ready(self) -> bool:
-        return bool(self.apikey) and self.apikey != "YOUR_KEY_HERE"
+        return bool(self.apikey) and not self.apikey.upper().startswith("YOUR_")
 
     # --- requests -------------------------------------------------------------
 

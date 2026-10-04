@@ -1,8 +1,8 @@
 # beets-crossref
 
 Beets plugin: finds each album on Spotify, Deezer, Apple (iTunes) and Discogs,
-then fetches fields from those services and Last.fm. Replaces the owner's
-former `spotify_album_match` and `lastfmpop` plugins.
+then fetches fields from those services and Last.fm. Replaces the earlier
+`spotify_album_match` and `lastfmpop` plugins.
 
 ## User
 
@@ -45,7 +45,7 @@ backup opens a file), so tests use a library file under `tmp_path`.
 
 ## Design rules
 
-- Database only: never write tags or move files (AutoDJ re-embeds on mtime changes).
+- Database only: never write tags or move files (tag writes change file mtimes, which other tools watch).
 - Store albums with `album.store(inherit=False)`; a plain `store()` copies album
   flexible fields onto every item. Fill fixed fields on items explicitly.
 - Read an object's own flexible value with `obj._values_flex.get(...)`: an

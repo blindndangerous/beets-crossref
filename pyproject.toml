@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "beets-crossref"
-version = "0.3.0"
+dynamic = ["version"]
 description = "Beets plugin that finds albums on Spotify, Deezer, Apple and Discogs and fetches what they and Last.fm know."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -29,6 +29,9 @@ test = [
     "pytest>=7",
     "ruff>=0.6",
 ]
+
+[tool.setuptools.dynamic]
+version = { attr = "beetsplug.crossref.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["beetsplug*"]

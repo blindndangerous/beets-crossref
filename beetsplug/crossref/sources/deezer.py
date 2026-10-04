@@ -9,6 +9,7 @@ treated as a failed request: MISSING, never cached, so the next run asks again.
 from __future__ import annotations
 
 import re
+import time
 
 from ..cache import MISSING
 from ..http import JsonClient
@@ -17,6 +18,7 @@ from .base import Source, Updates
 
 _ALBUM_URL = re.compile(r"deezer\.com/(?:[a-z]{2}(?:-[a-z]{2})?/)?album/(\d+)", re.I)
 _NOT_FOUND = 800
+_QUOTA = 4
 
 
 class DeezerSource(Source):
@@ -27,14 +29,21 @@ class DeezerSource(Source):
     def __init__(self, config, cache):
         super().__init__(config, cache)
         # Deezer allows about 50 requests per 5 s.
-        self.client = JsonClient("deezer", "https://api.deezer.com", min_interval=0.11)
+        self.client = JsonClient("deezer", "https://api.deezer.com", min_interval=0.12)
 
     def _get(self, path: str, **params):
         """Payload; None when Deezer has no such object; MISSING when the request failed."""
-        data = self.client.get(path, **params)
-        if isinstance(data, dict) and isinstance(data.get("error"), dict):
-            return None if data["error"].get("code") == _NOT_FOUND else MISSING
-        return data
+        for _ in range(3):
+            data = self.client.get(path, **params)
+            error = data.get("error") if isinstance(data, dict) else None
+            if not isinstance(error, dict):
+                return data
+            if error.get("code") == _NOT_FOUND:
+                return None
+            if error.get("code") != _QUOTA:
+                return MISSING
+            time.sleep(5)  # Deezer counts requests over a 5-second window
+        return MISSING
 
     # --- resolve --------------------------------------------------------------
 

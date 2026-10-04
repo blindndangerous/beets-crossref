@@ -150,3 +150,13 @@ def test_http_other_4xx_returns_json_body_or_missing(client, monkeypatch):
     monkeypatch.setattr(Resp, "json", lambda self: (_ for _ in ()).throw(ValueError("no json")))
     script(client, monkeypatch, Resp(400))
     assert client.get("album/2") is MISSING
+
+
+def test_http_failure_log_never_contains_the_url(client, monkeypatch, caplog):
+    """requests puts the full URL in its exception text, and Last.fm's key is a query parameter."""
+    secret_url = "https://x.test/api/?api_key=SECRET123"
+    script(client, monkeypatch, requests.ConnectionError(f"Max retries exceeded with url: {secret_url}"),
+           Resp(200, {"a": 1}))
+    with caplog.at_level("WARNING"):
+        client.get("", api_key="SECRET123")
+    assert "SECRET123" not in caplog.text

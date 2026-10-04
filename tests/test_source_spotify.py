@@ -8,6 +8,8 @@ import confuse
 import pytest
 
 from beetsplug.crossref.cache import Cache
+from beetsplug.crossref.http import SourceUnavailable
+from beetsplug.crossref.sources import spotify
 from beetsplug.crossref.sources.spotify import SpotifySource
 from beetsplug.crossref.tracks import TrackHit
 
@@ -148,3 +150,16 @@ def test_fuzzy_picks_best_candidate_or_none(source):
     source.cache.conn.execute("DELETE FROM entries")
     wrong = SimpleNamespace(album="Completely Different", albumartist="Someone Else", year=1980)
     assert source.album_fuzzy(wrong, [object()] * 4) is None
+
+
+def test_token_network_failure_ends_the_source_not_the_run(tmp_path, monkeypatch):
+    creds = {"spotify": {"client_id": "i", "client_secret": "s"}}
+    config = confuse.RootView([confuse.ConfigSource.of(creds)])
+    src = SpotifySource(config["spotify"], Cache(tmp_path / "c.db"))
+
+    def down(*args, **kwargs):
+        raise spotify.requests.ConnectionError("accounts.spotify.com unreachable")
+
+    monkeypatch.setattr(spotify.requests, "post", down)
+    with pytest.raises(SourceUnavailable):
+        src._token_request()

@@ -159,6 +159,8 @@ class CrossrefPlugin(BeetsPlugin):
             trusted = method in ("musicbrainz", "barcode")
             if not trusted and len(best[1]) < MIN_TRACK_SHARE * max(1, len(items)):
                 continue
+            if method == "barcode" and not best[1]:
+                continue  # one barcode can name several releases; this one shares no track
             if current and not self._covers_stored(source, album, items, best):
                 continue
             self._apply_ids(source, album, items, best[0], best[1], method, pretend)
