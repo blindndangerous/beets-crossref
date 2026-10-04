@@ -3,9 +3,9 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "beets-spotify-album-match"
-version = "0.2.0"
-description = "Beets plugin that matches local albums and tracks to Spotify."
+name = "beets-crossref"
+version = "0.3.0"
+description = "Beets plugin that finds albums on Spotify, Deezer, Apple and Discogs and fetches what they and Last.fm know."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -16,14 +16,13 @@ authors = [
 
 dependencies = [
     "beets>=2.2",
-    "spotipy>=2.22",
     "thefuzz>=0.20",
     "requests>=2.25",
 ]
 
 [project.urls]
-Homepage = "https://github.com/blindndangerous/beets-spotify-album-match"
-Source = "https://github.com/blindndangerous/beets-spotify-album-match"
+Homepage = "https://github.com/blindndangerous/beets-crossref"
+Source = "https://github.com/blindndangerous/beets-crossref"
 
 [project.optional-dependencies]
 test = [
