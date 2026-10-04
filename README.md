@@ -37,7 +37,9 @@ crossref:
         client_id: YOUR_ID
         client_secret: YOUR_SECRET
     discogs:
-        token: YOUR_PERSONAL_ACCESS_TOKEN
+        token: YOUR_PERSONAL_ACCESS_TOKEN   # or, instead:
+        key: APP_CONSUMER_KEY
+        secret: APP_CONSUMER_SECRET
     itunes:
         country: US
     lastfm:
@@ -62,8 +64,8 @@ Do not run two programs that query MusicBrainz from the same network at once.
   only searches and reads albums with it. Audio features come from beets'
   `spotifysync`, which uses beets' own built-in keys, so leave beets' `spotify`
   section without a client ID.
-- Discogs: generate a personal access token under Settings, Developers on
-  discogs.com.
+- Discogs: under Settings, Developers on discogs.com, either generate a
+  personal access token, or create an app and use its consumer key and secret.
 - Last.fm: register a key at https://www.last.fm/api/account/create.
 
 ## Use

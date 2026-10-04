@@ -70,16 +70,26 @@ class DiscogsSource(Source):
 
     def __init__(self, config, cache):
         super().__init__(config, cache)
+        # Either a personal access token, or an app's consumer key and secret:
+        # Discogs accepts both for database search at 60 requests a minute.
+        config.add({"token": "", "key": "", "secret": ""})
         config["token"].redact = True
-        self.token = (config["token"].get() or "").strip() if config["token"].exists() else ""
+        config["secret"].redact = True
+        token, key, secret = (str(config[k].get() or "").strip() for k in ("token", "key", "secret"))
+        if token:
+            self.auth = f"Discogs token={token}"
+        elif key and secret:
+            self.auth = f"Discogs key={key}, secret={secret}"
+        else:
+            self.auth = ""
         self.client = JsonClient(
             "discogs", "https://api.discogs.com", min_interval=1.0,  # 60 requests/min authenticated
-            headers={"Authorization": f"Discogs token={self.token}"} if self.token else None,
+            headers={"Authorization": self.auth} if self.auth else None,
         )
 
     @property
     def ready(self) -> bool:
-        return bool(self.token)
+        return bool(self.auth)
 
     def album_id_from_url(self, url: str) -> str | None:
         """Release URLs only: a master is a group of pressings, not one release."""

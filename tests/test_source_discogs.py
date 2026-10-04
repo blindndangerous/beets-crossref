@@ -26,6 +26,15 @@ def test_not_ready_without_token(tmp_path, monkeypatch):
     assert make(tmp_path, monkeypatch).ready
 
 
+def test_consumer_key_and_secret_authenticate_without_a_token(tmp_path):
+    config = confuse.RootView([confuse.ConfigSource.of({"key": "k", "secret": "s"})])
+    source = DiscogsSource(config, Cache(tmp_path / "c.db"))
+    assert source.ready
+    assert source.client.session.headers["Authorization"] == "Discogs key=k, secret=s"
+    half = confuse.RootView([confuse.ConfigSource.of({"key": "k"})])
+    assert not DiscogsSource(half, Cache(tmp_path / "d.db")).ready
+
+
 @pytest.mark.parametrize("url, expected", [
     ("https://www.discogs.com/release/1234567", "1234567"),
     ("https://www.discogs.com/release/1234567-Rick-Astley-Never-Gonna", "1234567"),
