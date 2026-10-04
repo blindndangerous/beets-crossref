@@ -157,6 +157,27 @@ def test_isrc_candidate_with_half_the_tracks_is_accepted(env):
     assert [i._values_flex.get("fake_track_id") for i in items] == ["s1", "s2", None, None]
 
 
+def test_isrc_prefers_the_edition_covering_the_bonus_tracks(env):
+    album = make_album(env.lib, count=6)
+    src = FakeSource()
+    # Opening tracks lead to the standard edition, the bonus track to the deluxe.
+    src.by_isrc = {"ISRC1": ["std"], "ISRC5": ["std"], "ISRC6": ["dlx"]}
+    src.tracklists = {"std": hits(5), "dlx": hits(6)}
+    run_resolve(env, [album], [src])
+    assert reload(env, album)[0].fake_album_id == "dlx"
+
+
+def test_stronger_evidence_does_not_swap_in_a_smaller_edition(env):
+    album = make_album(env.lib, count=6, fake_album_id="dlx")  # fuzzy, but all 6 tracks line up
+    src = FakeSource()
+    src.by_isrc = {f"ISRC{n}": ["std"] for n in range(1, 7)}
+    src.tracklists = {"std": hits(5), "dlx": hits(6)}
+    run_resolve(env, [album], [src])
+    fresh = reload(env, album)[0]
+    assert fresh.fake_album_id == "dlx"
+    assert "fake_album_id_source" not in fresh._values_flex
+
+
 def test_unreadable_tracklist_skips_candidate(env):
     album = make_album(env.lib)
     src = FakeSource()

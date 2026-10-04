@@ -151,9 +151,25 @@ class CrossrefPlugin(BeetsPlugin):
             trusted = method in ("musicbrainz", "barcode")
             if not trusted and len(best[1]) < MIN_TRACK_SHARE * max(1, len(items)):
                 continue
+            if current and not self._covers_stored(source, album, items, best):
+                continue
             self._apply_ids(source, album, items, best[0], best[1], method, pretend)
             return method
         return None
+
+    @staticmethod
+    def _covers_stored(source: Source, album, items, best) -> bool:
+        """A replacement must line up at least as many tracks as the stored ID.
+
+        Stronger evidence can still name a smaller edition: an ISRC shared by
+        the standard and deluxe releases must not swap a correct deluxe ID
+        for the standard one.
+        """
+        stored_id = album._values_flex.get(source.album_field)
+        if stored_id == best[0]:
+            return True
+        stored_tracks = source.album_tracks(stored_id)
+        return stored_tracks is None or len(best[1]) >= len(match_tracks(items, stored_tracks))
 
     def _candidates(self, mb, source: Source, album, items, method):
         if method == "musicbrainz":
