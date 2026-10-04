@@ -21,9 +21,9 @@ former `spotify_album_match` and `lastfmpop` plugins.
 ## Test
 
 ```bash
-pip install -e ".[test]"
-python -m pytest -q
-python -m ruff check beetsplug tests
+uv sync --extra test
+uv run pytest -q
+uv run ruff check beetsplug tests
 ```
 
 No test touches the network: sources get their `client.get` monkeypatched.

@@ -18,10 +18,10 @@ Afterwards, beets' own sync commands fill in the rest from the new IDs:
 ## Install
 
 ```bash
-pip install -e .
+uv pip install -e .
 ```
 
-Or copy the `beetsplug/crossref/` folder into your beets plugin path (for
+Run that inside the environment beets uses. Or copy the `beetsplug/crossref/` folder into your beets plugin path (for
 example `~/.config/beets/beetsplug/crossref/`) and set `pluginpath`.
 
 Add `crossref` to `plugins` in your beets config.
