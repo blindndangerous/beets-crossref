@@ -30,7 +30,7 @@ Add `crossref` to `plugins` in your beets config.
 
 ```yaml
 crossref:
-    disable: []             # sources to skip, e.g. [discogs]; all others run
+    sources: [spotify, deezer, itunes, discogs, lastfm]   # default: all; remove one to switch it off
     cache_days: 30          # how long answers are reused; 0 keeps them forever
     cache: ""               # default: crossref_cache.db in the beets config folder
     spotify:
@@ -48,8 +48,8 @@ crossref:
         max_age_days: 30    # skip tracks, albums and artists fetched more recently
 ```
 
-Sources: spotify, deezer, itunes, discogs, lastfm. All run unless listed in
-`disable`. Deezer and Apple need no credentials. A source without its
+Sources: spotify, deezer, itunes, discogs, lastfm. Without a `sources` list,
+all of them run. Deezer and Apple need no credentials. A source without its
 credentials is skipped with a warning.
 
 Each source waits between requests to stay under its published rate limit
@@ -69,7 +69,8 @@ Do not run two programs that query MusicBrainz from the same network at once.
 ## Use
 
 ```bash
-beet crossref resolve                     # every album, every source
+beet crossref                             # resolve, then fetch, every album
+beet crossref resolve                     # IDs only
 beet crossref resolve -s deezer,itunes    # only these sources this time
 beet crossref resolve -p artist:Muse      # pretend: show what would change
 beet crossref fetch

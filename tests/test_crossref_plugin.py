@@ -327,22 +327,29 @@ def test_fetch_source_unavailable_stops_only_that_source(env):
 # --- command wiring ----------------------------------------------------------
 
 
-def test_command_rejects_unknown_source_and_action(env, monkeypatch):
+def test_bare_command_resolves_then_fetches_and_rejects_unknown_sources(env, monkeypatch):
     monkeypatch.setattr(plugin_mod, "REGISTRY", {"fake": "x:Y"})
+    monkeypatch.setattr(plugin_mod, "load", lambda name: lambda config, cache: FakeSource(name))
     monkeypatch.setattr(plugin_mod.CrossrefPlugin, "_cache", lambda self: env.cache)
-    opts = type("O", (), {"sources": "nope", "pretend": False})
+    ran = []
+    monkeypatch.setattr(plugin_mod.CrossrefPlugin, "_resolve", lambda self, *a: ran.append("resolve"))
+    monkeypatch.setattr(plugin_mod.CrossrefPlugin, "_fetch", lambda self, *a: ran.append("fetch"))
+    env.plugin.config["sources"] = ["fake"]
+    opts = type("O", (), {"sources": "", "pretend": False})
+    env.plugin._command(env.lib, opts, ["artist:nobody"])
+    env.plugin._command(env.lib, opts, ["fetch"])
+    assert ran == ["resolve", "fetch", "fetch"]
+    opts.sources = "nope"
     with pytest.raises(ui.UserError):
-        env.plugin._command(env.lib, opts, ["resolve"])
-    with pytest.raises(ui.UserError):
-        env.plugin._command(env.lib, opts, ["bogus"])
+        env.plugin._command(env.lib, opts, [])
 
 
-def test_disable_drops_a_source_and_rejects_unknown_names(env, monkeypatch):
+def test_config_sources_pick_the_sources(env, monkeypatch):
     monkeypatch.setattr(plugin_mod, "REGISTRY", {"a": "x:Y", "b": "x:Y"})
     monkeypatch.setattr(plugin_mod, "load", lambda name: lambda config, cache: FakeSource(name))
-    env.plugin.config["disable"] = ["b"]
-    assert [s.name for s in env.plugin._sources("", env.cache)] == ["a"]
-    assert [s.name for s in env.plugin._sources("b", env.cache)] == []
-    env.plugin.config["disable"] = ["typo"]
+    env.plugin.config["sources"] = ["b"]
+    assert [s.name for s in env.plugin._sources("", env.cache)] == ["b"]
+    assert [s.name for s in env.plugin._sources("a", env.cache)] == ["a"]
+    env.plugin.config["sources"] = ["typo"]
     with pytest.raises(ui.UserError):
         env.plugin._sources("", env.cache)

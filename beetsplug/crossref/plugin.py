@@ -1,7 +1,10 @@
 """beet crossref: find each album on other services, then fetch what they know.
 
+    beet crossref [-s SOURCES] [-p] [QUERY]           resolve, then fetch
     beet crossref resolve [-s SOURCES] [-p] [QUERY]   fill missing album/track IDs
     beet crossref fetch   [-s SOURCES] [-p] [QUERY]   fill fields from stored IDs
+
+Sources come from the `sources` config list (default: all of them).
 
 Writes to the beets database only, never to files.  Run spotifysync, mbsync
 and friends afterwards for what they own.
@@ -55,16 +58,16 @@ class CrossrefPlugin(BeetsPlugin):
     def __init__(self):
         super().__init__("crossref")
         self.config.add({
-            "disable": [],  # sources never to use; every other source runs
+            "sources": list(REGISTRY),  # remove a name to switch that source off
             "cache": "",  # default: crossref_cache.db in the beets config dir
             "cache_days": 30,
         })
 
     def commands(self):
         cmd = ui.Subcommand("crossref", help="find albums on other services and fetch what they know")
-        cmd.parser.usage = "%prog resolve|fetch [options] [QUERY]"
+        cmd.parser.usage = "%prog [resolve|fetch] [options] [QUERY]"
         cmd.parser.add_option("-s", "--source", dest="sources", default="",
-                              help="only these comma-separated sources (default: all not disabled)")
+                              help="only these comma-separated sources this run (default: config sources)")
         cmd.parser.add_option("-p", "--pretend", action="store_true", help="show changes, write nothing")
         cmd.func = self._command
         return [cmd]
@@ -78,13 +81,12 @@ class CrossrefPlugin(BeetsPlugin):
         return Cache(path or f"{config.config_dir()}/crossref_cache.db", self.config["cache_days"].get(float))
 
     def _sources(self, names: str, cache: Cache) -> list[Source]:
-        chosen = [n.strip() for n in names.split(",") if n.strip()] or list(REGISTRY)
-        disabled = self.config["disable"].as_str_seq()
-        unknown = [n for n in chosen + disabled if n not in REGISTRY]
+        chosen = [n.strip() for n in names.split(",") if n.strip()] or self.config["sources"].as_str_seq()
+        unknown = [n for n in chosen if n not in REGISTRY]
         if unknown:
             raise ui.UserError(f"unknown source(s): {', '.join(unknown)}; known: {', '.join(REGISTRY)}")
         sources = []
-        for name in (n for n in chosen if n not in disabled):
+        for name in chosen:
             source = load(name)(self.config[name], cache)
             if source.ready:
                 sources.append(source)
@@ -93,19 +95,23 @@ class CrossrefPlugin(BeetsPlugin):
         return sources
 
     def _command(self, lib, opts, args):
-        if not args or args[0] not in ("resolve", "fetch"):
-            raise ui.UserError("usage: beet crossref resolve|fetch [-s SOURCES] [-p] [QUERY]")
-        action, query = args[0], args[1:] or None
+        # A bare `beet crossref` resolves and then fetches: fetch reads the
+        # IDs resolve has just stored.
+        if args and args[0] in ("resolve", "fetch"):
+            actions, query = [args[0]], args[1:]
+        else:
+            actions, query = ["resolve", "fetch"], args
         cache = self._cache()
         try:
             sources = self._sources(opts.sources, cache)
-            albums = list(lib.albums(query))
-            log.info("crossref %s: %d albums, sources %s", action, len(albums),
-                     ", ".join(s.name for s in sources))
-            if action == "resolve":
-                self._resolve(lib, albums, [s for s in sources if s.resolves], cache, opts.pretend)
-            else:
-                self._fetch(lib, albums, [s for s in sources if s.fetches], opts.pretend)
+            albums = list(lib.albums(query or None))
+            for action in actions:
+                ui.print_(f"crossref {action}: {len(albums)} albums, sources "
+                          f"{', '.join(s.name for s in sources)}")
+                if action == "resolve":
+                    self._resolve(lib, albums, [s for s in sources if s.resolves], cache, opts.pretend)
+                else:
+                    self._fetch(lib, albums, [s for s in sources if s.fetches], opts.pretend)
         finally:
             cache.close()
 
