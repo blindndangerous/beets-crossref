@@ -76,7 +76,10 @@ warning, and carries on with the others.
 Where to get credentials:
 
 - Spotify: create an app at https://developer.spotify.com/dashboard and copy
-  its client ID and secret.
+  its client ID and secret. Since 2026, Spotify only runs development-mode
+  apps for owners with a Premium account, and all of an owner's
+  development-mode apps share one request quota. When Spotify says that quota
+  is used up, crossref stops asking Spotify for the rest of the run.
 - Discogs: on discogs.com, open Settings, then Developers. Generate a personal
   access token, or create an app and use its consumer key and secret.
 - Last.fm: register a key at https://www.last.fm/api/account/create.

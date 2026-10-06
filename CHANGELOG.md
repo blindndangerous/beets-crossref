@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- When Spotify answers 429 with the reason `QUOTA_EXCEEDED`, crossref stops
+  using Spotify for the rest of the run straight away and names the reason in
+  its warning, instead of waiting and retrying.
+
 ## 0.3.0, 2026-10-04
 
 First public release, under the name beets-crossref. It replaces the earlier

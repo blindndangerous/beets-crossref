@@ -112,6 +112,20 @@ def test_http_429_long_retry_after_raises_without_sleeping(client, monkeypatch):
     assert client.sleeps == []
 
 
+def test_http_429_quota_exceeded_ends_source_at_once(client, monkeypatch):
+    script(client, monkeypatch, Resp(429, {"reason": "QUOTA_EXCEEDED"}, headers={"Retry-After": "3"}))
+    with pytest.raises(SourceUnavailable, match="QUOTA_EXCEEDED"):
+        client.get("album/1")
+    assert client.sleeps == []
+    assert client.calls == 1
+
+
+def test_http_429_without_body_still_retries(client, monkeypatch):
+    script(client, monkeypatch, Resp(429, headers={"Retry-After": "3"}), Resp(200, {"ok": True}))
+    assert client.get("album/1") == {"ok": True}
+    assert client.sleeps == [3.0]
+
+
 def test_http_429_short_retry_after_is_honoured(client, monkeypatch):
     script(client, monkeypatch, Resp(429, headers={"Retry-After": "3"}), Resp(200, {"ok": True}))
     assert client.get("album/1") == {"ok": True}

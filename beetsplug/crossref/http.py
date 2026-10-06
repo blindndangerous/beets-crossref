@@ -79,10 +79,17 @@ class JsonClient:
                 return None
             if response.status_code == 429 or response.status_code >= 500:
                 asked = _retry_after(response)
+                reason = _reason(response) if response.status_code == 429 else ""
+                why = f" ({reason})" if reason else ""
+                if reason == "QUOTA_EXCEEDED":
+                    # Quota does not recover in seconds, whatever Retry-After says.
+                    log.warning("%s: HTTP 429%s on %s, giving up for this run", self.name, why, path)
+                    raise SourceUnavailable(f"{self.name} quota exceeded{why} on {path}", status=429)
                 if asked and asked > self.max_wait:
-                    raise SourceUnavailable(f"{self.name} asks to wait {asked:.0f} s on {path}")
+                    raise SourceUnavailable(f"{self.name} asks to wait {asked:.0f} s on {path}{why}")
                 wait = asked or min(delay, self.max_wait)
-                log.warning("%s: HTTP %d on %s, waiting %.0f s", self.name, response.status_code, path, wait)
+                log.warning("%s: HTTP %d%s on %s, waiting %.0f s",
+                            self.name, response.status_code, why, path, wait)
                 time.sleep(wait)
                 delay *= 2
                 continue
@@ -106,3 +113,18 @@ def _retry_after(response: requests.Response) -> float | None:
         return float(response.headers.get("Retry-After", ""))
     except ValueError:
         return None
+
+
+def _reason(response: requests.Response) -> str:
+    """The `reason` of a 429 JSON body (Spotify: QUOTA_EXCEEDED), or "" when absent."""
+    try:
+        body = response.json()
+    except ValueError:
+        return ""
+    if isinstance(body, dict):
+        reason = body.get("reason")
+        if reason is None and isinstance(body.get("error"), dict):
+            reason = body["error"].get("reason")
+        if isinstance(reason, str):
+            return reason.strip()[:40]
+    return ""
