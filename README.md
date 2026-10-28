@@ -24,7 +24,7 @@ audio features.
 ## Requirements
 
 - beets 2.2 or later
-- Python 3.10 or later
+- Python 3.14 or later
 - `requests` and `thefuzz`, which the install commands below pull in
 
 ## Install

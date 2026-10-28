@@ -7,7 +7,7 @@ name = "beets-crossref"
 dynamic = ["version"]
 description = "Beets plugin that finds albums on Spotify, Deezer, Apple and Discogs and fetches what they and Last.fm know."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.14"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [

@@ -17,10 +17,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Oldest supported Python and the newest one that beets and every
-        # locked dependency install on from wheels. python-readiness.yml
-        # opens an issue when a newer one is ready.
-        python-version: ["3.10", "3.14"]
+        # Python 3.14 and later only. python-readiness.yml opens an issue
+        # when a newer Python installs every dependency from wheels.
+        python-version: ["3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -64,8 +64,8 @@ def main():
     body = (
         f"beets-crossref and its test dependencies now install from wheels on "
         f"Python {newest} (Linux x86-64), so it can join the test matrix.\n\n"
-        f'Add "{newest}" to `python-version` in `.github/workflows/test.yml` '
-        f"in place of {current}, keeping the oldest supported Python.\n\n"
+        f'Add "{newest}" to `python-version` in `.github/workflows/test.yml`, '
+        f"next to {current}.\n\n"
         f"Resolved with `uv pip compile pyproject.toml --extra test "
         f"--python-version {newest} --no-build`:\n\n```\n{check.stdout}```\n"
     )

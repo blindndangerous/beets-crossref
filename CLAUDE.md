@@ -13,7 +13,7 @@ then fetches fields from those services and Last.fm. Replaces the earlier
 
 ## Stack
 
-- Python >= 3.10, beets >= 2.2 (developed against beets 2.14.1)
+- Python >= 3.14, beets >= 2.2 (developed against beets 2.14.1)
 - `requests` for every service, through `http.JsonClient`
 - `thefuzz` for Spotify's fuzzy fallback (`helpers.py`)
 - `pytest`, `ruff` (config in `pyproject.toml`)
