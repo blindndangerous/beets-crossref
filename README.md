@@ -1,5 +1,8 @@
 # beets-crossref
 
+[![CI status](https://github.com/blindndangerous/beets-crossref/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/blindndangerous/beets-crossref/actions/workflows/test.yml)
+[![Test coverage on Codecov](https://codecov.io/gh/blindndangerous/beets-crossref/branch/main/graph/badge.svg)](https://codecov.io/gh/blindndangerous/beets-crossref)
+
 A beets plugin that finds each album in your library on Spotify, Deezer,
 Apple's iTunes store and Discogs, then fetches what those services and
 Last.fm know about it.

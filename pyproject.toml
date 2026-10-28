@@ -27,6 +27,7 @@ Source = "https://github.com/blindndangerous/beets-crossref"
 [project.optional-dependencies]
 test = [
     "pytest>=7",
+    "pytest-cov>=5",
     "ruff>=0.6",
 ]
 
@@ -38,6 +39,10 @@ include = ["beetsplug*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["beetsplug"]
+branch = true
 
 [tool.ruff]
 line-length = 110
