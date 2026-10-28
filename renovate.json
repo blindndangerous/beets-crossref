@@ -1,0 +1,36 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    "helpers:pinGitHubActionDigestsToSemver"
+  ],
+  "dependencyDashboard": true,
+  "packageRules": [
+    {
+      "description": "A library keeps lower bounds only in pyproject.toml; uv.lock carries the tested versions.",
+      "matchManagers": [
+        "pep621"
+      ],
+      "rangeStrategy": "update-lockfile"
+    },
+    {
+      "description": "Merge minor, patch, pin, digest and lock-file updates once the checks pass. Majors wait for review.",
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "pinDigest",
+        "digest",
+        "lockFileMaintenance"
+      ],
+      "automerge": true,
+      "automergeType": "pr"
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "before 5am"
+    ]
+  }
+}
